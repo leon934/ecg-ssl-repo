@@ -2,6 +2,8 @@
 
 ## Introduction
 
+Note that this is done on Python 3.9.6. Upgraded versions should work too.
+
 First, the repository requires:
 
 1. `~/.venv` in root directory with dependencies installed.
