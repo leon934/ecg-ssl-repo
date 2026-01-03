@@ -4,7 +4,6 @@ import os
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
-from tqdm import tqdm
 
 from utils import accuracy, save_checkpoint, save_config_file
 

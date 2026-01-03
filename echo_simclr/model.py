@@ -1,7 +1,8 @@
 import torch.nn as nn
 from torchvision.models.vision_transformer import vit_b_16, vit_b_32, vit_l_16, vit_l_32, vit_h_14
 
-vit_dict = {
+# NOTE: FOR SYNTAX AND CACHING, GENERAL MODEL ARCHETYPE STARTS FOLLOWED BY AN "_". E.G. "vit_b_16"
+model_dict = {
     "vit_b_16": vit_b_16(),
     "vit_b_32": vit_b_32(),
     "vit_l_16": vit_l_16(),
@@ -13,7 +14,7 @@ class ViTModel(nn.Module):
     def __init__(self, base_model):
         super(ViTModel, self).__init__()
 
-        self.backbone = vit_dict[base_model]
+        self.backbone = model_dict[base_model]
 
         # add mlp head to vit
         dim_mlp = self.backbone.heads.head.in_features

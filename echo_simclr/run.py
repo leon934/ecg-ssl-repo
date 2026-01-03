@@ -5,16 +5,16 @@ import os
 
 import torch
 
-from model import ViTModel, vit_dict
+from model import ViTModel, model_dict
 from data_aug.cl_dataset import ContrastiveLearningDataset
 from simclr import SimCLR
 
 parser = argparse.ArgumentParser(description='PyTorch SimCLR')
 
 parser.add_argument('-a', '--arch', metavar='ARCH',
-                    choices=vit_dict,
+                    choices=model_dict,
                     help='model architecture: ' +
-                         ' | '.join(vit_dict))
+                         ' | '.join(model_dict))
 parser.add_argument('--lr', '--learning-rate', default=0.0003, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
@@ -58,9 +58,10 @@ def main():
         else "cpu"
     )
     args.workers = max(1, os.cpu_count() // 2)
+    args.model_dict = model_dict
 
     data = ContrastiveLearningDataset(args.data)
-    dataset = data.get_dataset(args.dataset_name)
+    dataset = data.get_dataset(args.dataset_name, args.arch, args.model_dict)
 
     train_data = dataset["TRAIN"]
     train_loader = torch.utils.data.DataLoader(
