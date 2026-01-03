@@ -37,6 +37,8 @@ parser.add_argument('--log-every-n-steps', default=100, type=int,
                     help='Log every n steps')
 parser.add_argument('--temperature', default=0.07, type=float,
                     help='softmax temperature (default: 0.07)')
+parser.add_argument('--gpu-index', default=0, type=int,
+                    help='GPU index to use (default: 0)')
 
 def setup_logging(log_dir: Path):
     log_dir.mkdir(parents=True, exist_ok=True)
