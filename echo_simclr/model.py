@@ -14,6 +14,16 @@ class ViTModel(nn.Module):
 
         self.backbone = model_dict[base_model]
 
+        old_conv = self.backbone.conv_proj
+        self.backbone.conv_proj = nn.Conv2d(
+            in_channels=1,
+            out_channels=old_conv.out_channels,
+            kernel_size=old_conv.kernel_size,
+            stride=old_conv.stride,
+            padding=old_conv.padding,
+            bias=old_conv.bias is not None,
+        )
+
         # add mlp head to vit
         dim_mlp = self.backbone.heads.head.in_features
         self.backbone.heads.head = nn.Sequential(nn.Linear(dim_mlp, dim_mlp), nn.ReLU(), self.backbone.heads.head)
