@@ -85,7 +85,8 @@ class ContrastiveLearningDataset:
     def get_simclr_pipeline_transform(size, s=1):
         """Return a set of data augmentation transformations as described in the SimCLR paper."""
         color_jitter = transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
-        data_transforms = transforms.Compose([transforms.RandomResizedCrop(size=size),
+        data_transforms = transforms.Compose([transforms.ToPILImage(),
+                                              transforms.RandomResizedCrop(size=size),
                                               transforms.RandomApply([color_jitter], p=0.8),
                                               GaussianBlur(kernel_size=int(0.1 * size)),
                                               transforms.ToTensor()])
@@ -95,8 +96,6 @@ class ContrastiveLearningDataset:
         # build dataset based on path (and name for scalability)
         # must lead to the root /EchoNet-Dynamic folder
         if name == "echonet-dynamic":
-            video_name_df = pd.read_csv(self.root_folder / "FileList.csv")
-
             # derived from ipynb, so the arrays can be created beforehand in mem. w/ np vs using python lists
             # only issue is scalability if the dataset is updated for wtv reason
             NUM_TRAIN_FRAMES = 1315340
@@ -104,6 +103,22 @@ class ContrastiveLearningDataset:
             NUM_TEST_FRAMES = 226460
 
             VID_DIM = 112
+
+            if (dataset_path := self.root_folder / "echonet-np_arr.npz").exists():
+                print("Found saved EchoNet-Dynamic dataset. Skipping creating views.")
+                dataset_case = np.load(dataset_path, mmap_mode="r")
+                
+                return {
+                    split_type: FrameDataset(
+                        array=dataset_case[split_type],
+                        length=dataset_case[f"{split_type}_IDX"],
+                        transform=ContrastiveLearningViewGenerator(
+                            self.get_simclr_pipeline_transform(VID_DIM)
+                        )
+                    ) for split_type in ("TRAIN", "VAL", "TEST")
+                }
+
+            video_name_df = pd.read_csv(self.root_folder / "FileList.csv")
 
             dataset_case = {
                 "TRAIN": [np.zeros((NUM_TRAIN_FRAMES, VID_DIM, VID_DIM), dtype=np.uint8), 0],
@@ -132,8 +147,8 @@ class ContrastiveLearningDataset:
                 dataset_case[curr_split][1] = curr_idx
                 obj.close()
 
-            # TODO: store np representation so we don't have to run this every time...
-            # TODO: curr only takes ~1:30 to run though so not needed atm
+            np.savez(self.root_folder / "echonet-np_arr.npz", **{k: v[0] for k, v in dataset_case.items()}, **{f"{k}_IDX": np.array(v[1]) for k, v in dataset_case.items()})
+            print("Finished saving np array.")
 
             return {
                 split_type: FrameDataset(

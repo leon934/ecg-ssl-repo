@@ -58,7 +58,7 @@ class SimCLR(object):
         logging.info(f"Training with gpu: {self.args.disable_cuda}.")
 
         for curr_epoch in range(self.args.epochs):
-            for images, _ in tqdm(train_loader):
+            for images, _ in train_loader:
                 images = torch.cat(images, dim=0).to(self.args.device)
 
                 features = self.model(images)
