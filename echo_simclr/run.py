@@ -39,6 +39,8 @@ parser.add_argument('--temperature', default=0.07, type=float,
                     help='softmax temperature (default: 0.07)')
 parser.add_argument('--gpu-index', default=0, type=int,
                     help='GPU index to use (default: 0)')
+parser.add_argument('-j', '--workers', default=12, type=int, metavar='N',
+                    help='number of data loading workers (default: 12)')
 
 def setup_logging(log_dir: Path):
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -57,7 +59,6 @@ def main():
         if torch.cuda.is_available() and args.gpu_index is not None and args.gpu_index >= 0
         else "cpu"
     )
-    args.workers = max(1, os.cpu_count() // 2)
     args.model_dict = model_dict
 
     data = ContrastiveLearningDataset(args.data)
