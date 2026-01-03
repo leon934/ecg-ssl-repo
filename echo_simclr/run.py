@@ -73,7 +73,7 @@ def main():
     model = model.to(args.device)
     
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0, 
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 
                                                            last_epoch=-1)
     
     simclr_model = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
