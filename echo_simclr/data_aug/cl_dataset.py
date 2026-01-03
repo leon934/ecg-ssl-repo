@@ -77,7 +77,7 @@ class FrameDataset(Dataset):
         return self.length
     
     def __getitem__(self, index):
-        return self.transform(self.array[index])
+        return self.transform(self.array[index]), 0
 
 class ContrastiveLearningDataset:
     def __init__(self, root_folder: str):
