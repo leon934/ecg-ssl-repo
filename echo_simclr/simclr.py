@@ -5,6 +5,7 @@ from pathlib import Path
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
+import torchvision.utils as vutils
 
 from utils import accuracy, save_checkpoint, save_config_file
 
@@ -64,6 +65,9 @@ class SimCLR(object):
         for curr_epoch in range(self.args.epochs):
             for images, _ in train_loader:
                 images = torch.cat(images, dim=0).to(self.args.device)
+
+                if n_iter == 0:
+                    vutils.save_image(images[:32], "debug_batch.png", normalize=True)
 
                 features = self.model(images)
                 logits, labels = self.info_nce_loss(features)
