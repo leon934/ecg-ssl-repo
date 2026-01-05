@@ -1,5 +1,4 @@
 import logging
-import os
 import datetime
 from pathlib import Path
 
@@ -60,6 +59,8 @@ class SimCLR(object):
         logging.info(f"Model parameter device: {next(self.model.parameters()).device}")
         logging.info(f"CUDA disabled: {self.args.disable_cuda}.")
 
+        date = datetime.datetime.now()
+
         for curr_epoch in range(self.args.epochs):
             for images, _ in train_loader:
                 images = torch.cat(images, dim=0).to(self.args.device)
@@ -71,7 +72,15 @@ class SimCLR(object):
             
                 self.optimizer.zero_grad()
                 loss.backward()
+
+                for name, p in self.model.named_parameters():
+                    if p.grad is not None:
+                        logging.info(f"{name} grad : {p.grad.abs().mean().item()}")
+
                 self.optimizer.step()
+
+                for name, p in self.model.named_parameters():
+                    logging.info(f"{name} grad: {p.abs().mean().item()}")
 
                 if self.scheduler is not None:
                     self.scheduler.step()
@@ -88,7 +97,7 @@ class SimCLR(object):
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=datetime.datetime.now()))
+            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             save_checkpoint({
