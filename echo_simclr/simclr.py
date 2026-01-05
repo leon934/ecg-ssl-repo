@@ -75,12 +75,9 @@ class SimCLR(object):
 
                 for name, p in self.model.named_parameters():
                     if p.grad is not None:
-                        logging.info(f"{name} grad : {p.grad.abs().mean().item()}")
+                        logging.info(f"{name} grad : {p.grad.abs().max().item()}")
 
                 self.optimizer.step()
-
-                for name, p in self.model.named_parameters():
-                    logging.info(f"{name} grad: {p.abs().mean().item()}")
 
                 if self.scheduler is not None:
                     self.scheduler.step()
