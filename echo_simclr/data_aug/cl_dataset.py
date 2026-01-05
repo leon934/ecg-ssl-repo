@@ -108,19 +108,19 @@ class ContrastiveLearningDataset:
 
             # scalable; only has vit so far.
             if isinstance(model_dict[arch], VisionTransformer):
-                if (dataset_path := self.root_folder / "echonet-vit-np_arr.npz").exists():
-                    print("Found saved EchoNet-Dynamic dataset. Skipping creating views.")
-                    dataset_case = np.load(dataset_path, mmap_mode="r")
+                # if (dataset_path := self.root_folder / "echonet-vit-np_arr.npz").exists():
+                #     print("Found saved EchoNet-Dynamic dataset. Skipping creating views.")
+                #     dataset_case = np.load(dataset_path, mmap_mode="r")
                     
-                    return {
-                        split_type: FrameDataset(
-                            array=dataset_case[split_type],
-                            length=dataset_case[f"{split_type}_IDX"],
-                            transform=ContrastiveLearningViewGenerator(
-                                self.get_simclr_pipeline_transform(VID_DIM)
-                            )
-                        ) for split_type in ("TRAIN", "VAL", "TEST")
-                    }
+                #     return {
+                #         split_type: FrameDataset(
+                #             array=dataset_case[split_type],
+                #             length=dataset_case[f"{split_type}_IDX"],
+                #             transform=ContrastiveLearningViewGenerator(
+                #                 self.get_simclr_pipeline_transform(VID_DIM)
+                #             )
+                #         ) for split_type in ("TRAIN", "VAL", "TEST")
+                #     }
 
                 video_name_df = pd.read_csv(self.root_folder / "FileList.csv")
 
@@ -151,7 +151,7 @@ class ContrastiveLearningDataset:
                     dataset_case[curr_split][1] = curr_idx
                     obj.close()
 
-                np.savez(self.root_folder / "echonet-np_arr.npz", **{k: v[0] for k, v in dataset_case.items()}, **{f"{k}_IDX": np.array(v[1]) for k, v in dataset_case.items()})
+                np.savez(self.root_folder / "echonet-vit-np_arr.npz", **{k: v[0] for k, v in dataset_case.items()}, **{f"{k}_IDX": np.array(v[1]) for k, v in dataset_case.items()})
                 print("Finished saving np array.")
 
                 return {
