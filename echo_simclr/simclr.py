@@ -57,6 +57,7 @@ class SimCLR(object):
         n_iter = 0
         logging.info(f"Start SimCLR training for {self.args.epochs} epochs.")
         logging.info(f"Using device: {self.args.device}.")
+        logging.info(f"Model parameter device: {next(self.model.parameters()).device}")
         logging.info(f"CUDA disabled: {self.args.disable_cuda}.")
 
         for curr_epoch in range(self.args.epochs):
