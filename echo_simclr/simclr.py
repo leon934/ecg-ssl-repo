@@ -1,5 +1,7 @@
 import logging
 import os
+import datetime
+from pathlib import Path
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -11,7 +13,7 @@ torch.manual_seed(0)
 
 class SimCLR(object):
     def __init__(self, model, optimizer, scheduler, args):
-        self.model = model
+        self.model = model.to(args.device)
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.args = args
@@ -54,7 +56,8 @@ class SimCLR(object):
 
         n_iter = 0
         logging.info(f"Start SimCLR training for {self.args.epochs} epochs.")
-        logging.info(f"Training with gpu: {self.args.disable_cuda}.")
+        logging.info(f"Using device: {self.args.device}.")
+        logging.info(f"CUDA disabled: {self.args.disable_cuda}.")
 
         for curr_epoch in range(self.args.epochs):
             for images, _ in train_loader:
@@ -78,20 +81,23 @@ class SimCLR(object):
                     self.writer.add_scalar('loss', loss, global_step=n_iter)
                     self.writer.add_scalar('acc/top1', top1[0], global_step=n_iter)
                     self.writer.add_scalar('acc/top5', top5[0], global_step=n_iter)
-                    self.writer.add_scalar('learning_rate', self.scheduler.get_lr()[0], global_step=n_iter)
+                    self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
                 
                 n_iter += 1
+
+            # save model checkpoints
+            checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
+            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=datetime.datetime.now()))
+            curr_model_path.mkdir(parents=True, exist_ok=True)
+            
+            save_checkpoint({
+                'epoch': self.args.epochs,
+                'arch': self.args.arch,
+                'state_dict': self.model.state_dict(),
+                'optimizer': self.optimizer.state_dict(),
+            }, is_best=False, filename=curr_model_path / checkpoint_name)
+            logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
             logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
 
         logging.info("Training has finished.")
-        # save model checkpoints
-        checkpoint_name = 'checkpoint_{:04d}.pth.tar'.format(self.args.epochs)
-        
-        save_checkpoint({
-            'epoch': self.args.epochs,
-            'arch': self.args.arch,
-            'state_dict': self.model.state_dict(),
-            'optimizer': self.optimizer.state_dict(),
-        }, is_best=False, filename=os.path.join(self.writer.log_dir, checkpoint_name))
-        logging.info(f"Model checkpoint and metadata has been saved at {self.writer.log_dir}.")
