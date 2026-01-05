@@ -69,6 +69,8 @@ class SimCLR(object):
                 logits, labels = self.info_nce_loss(features)
 
                 loss = self.criterion(logits, labels)
+
+                logging.info(f"loss : {loss.item()}")
             
                 self.optimizer.zero_grad()
                 loss.backward()
