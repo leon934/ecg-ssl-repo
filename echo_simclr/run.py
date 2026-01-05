@@ -46,7 +46,7 @@ def setup_logging(log_dir: Path):
     log_dir.mkdir(parents=True, exist_ok=True)
 
     logging.basicConfig(
-        filename=log_dir / "training-{date:%m-%d-%Y_%H:%M:%S}.log",
+        filename=log_dir / "training-{date:%m-%d-%Y_%H:%M:%S}.log".format(date=datetime.datetime.now()),
         level=logging.DEBUG,
         filemode="w"
     )
