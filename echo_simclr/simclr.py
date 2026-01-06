@@ -5,7 +5,6 @@ from pathlib import Path
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
-import torchvision.utils as vutils
 
 from utils import accuracy, save_checkpoint, save_config_file
 
@@ -55,7 +54,7 @@ class SimCLR(object):
         save_config_file(self.writer.log_dir, self.args)
 
         n_iter = 0
-        logging.info(f"Start SimCLR training for {self.args.epochs} epochs.")
+        logging.info(f"Start SimCLR training for {self.args.epochs} epochs with {self.args.dataset_name} dataset.")
         logging.info(f"Using device: {self.args.device}.")
         logging.info(f"Model parameter device: {next(self.model.parameters()).device}")
         logging.info(f"CUDA disabled: {self.args.disable_cuda}.")
@@ -65,9 +64,6 @@ class SimCLR(object):
         for curr_epoch in range(self.args.epochs):
             for images, _ in train_loader:
                 images = torch.cat(images, dim=0).to(self.args.device)
-
-                if n_iter == 0:
-                    vutils.save_image(images[:32], "debug_batch.png", normalize=True)
 
                 features = self.model(images)
                 logits, labels = self.info_nce_loss(features)
@@ -112,5 +108,4 @@ class SimCLR(object):
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
             logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
-
-        logging.info("Training has finished.")
+        logging.info("Training finished.")

@@ -69,7 +69,7 @@ def main():
         num_workers=args.workers, pin_memory=True, drop_last=True
     )
 
-    model = ViTModel(base_model=args.arch)
+    model = ViTModel(base_model=args.arch, dataset_name=args.dataset_name)
     model = model.to(args.device)
 
     print(next(model.parameters()).dtype)
@@ -79,7 +79,7 @@ def main():
                                                            last_epoch=-1)
     
     simclr_model = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
-    # simclr_model.train(train_loader)
+    simclr_model.train(train_loader)
 
 if __name__ == "__main__":
     setup_logging(Path("./logs"))
