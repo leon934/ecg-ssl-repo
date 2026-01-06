@@ -5,8 +5,6 @@ from torchvision import transforms
 from torch.utils.data import Dataset
 from torchvision.models.vision_transformer import VisionTransformer
 import numpy as np
-import torch.nn as nn
-import torch
 import pandas as pd
 import av
 from tqdm import tqdm
@@ -23,48 +21,6 @@ class ContrastiveLearningViewGenerator(object):
 
     def __call__(self, x):
         return [self.base_transform(x) for _ in range(self.n_views)]
-    
-class GaussianBlur(object):
-    """blur a single image on CPU"""
-    def __init__(self, kernel_size):
-        radias = kernel_size // 2
-        kernel_size = radias * 2 + 1
-        self.blur_h = nn.Conv2d(1, 1, kernel_size=(kernel_size, 1),
-                                stride=1, padding=0, bias=False, groups=1)
-        self.blur_v = nn.Conv2d(1, 1, kernel_size=(1, kernel_size),
-                                stride=1, padding=0, bias=False, groups=1)
-        self.k = kernel_size
-        self.r = radias
-
-        self.blur = nn.Sequential(
-            nn.ReflectionPad2d(radias),
-            self.blur_h,
-            self.blur_v
-        )
-
-        self.pil_to_tensor = transforms.ToTensor()
-        self.tensor_to_pil = transforms.ToPILImage()
-
-    def __call__(self, img):
-        img = self.pil_to_tensor(img).unsqueeze(0)
-
-        sigma = np.random.uniform(0.1, 2.0)
-        x = np.arange(-self.r, self.r + 1)
-        x = np.exp(-np.power(x, 2) / (2 * sigma * sigma))
-        x = x / x.sum()
-
-        x = torch.from_numpy(x).view(1, -1)
-
-        self.blur_h.weight.data.copy_(x.view(1, 1, self.k, 1))
-        self.blur_v.weight.data.copy_(x.view(1, 1, 1, self.k))
-
-        with torch.no_grad():
-            img = self.blur(img)
-            img = img.squeeze(0)
-
-        img = self.tensor_to_pil(img)
-
-        return img
 
 # dataset wrapper to pass into pytorch dataloader class
 class FrameDataset(Dataset):
@@ -90,7 +46,7 @@ class ContrastiveLearningDataset:
         data_transforms = transforms.Compose([transforms.ToPILImage(),
                                               transforms.RandomResizedCrop(size=size),
                                               transforms.RandomApply([color_jitter], p=0.8),
-                                              GaussianBlur(kernel_size=int(0.1 * size)),
+                                              transforms.RandomApply([transforms.GaussianBlur(kernel_size=int(0.1 * size | 1))]),
                                               transforms.ToTensor()])
         return data_transforms
     
