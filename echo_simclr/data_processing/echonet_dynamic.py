@@ -9,7 +9,7 @@ def echonet_dataset(root_folder: str):
     # derived from ipynb, so the arrays can be created beforehand in mem. w/ np vs using python lists
     # only issue is scalability if the dataset is updated for wtv reason
 
-    # dataset's split is saved within dataset_case
+    # dataset's split is saved within dataset_case 
     NUM_TRAIN_FRAMES = 1315340
     NUM_VAL_FRAMES = 228836
     NUM_TEST_FRAMES = 226460

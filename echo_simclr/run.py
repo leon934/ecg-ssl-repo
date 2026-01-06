@@ -6,7 +6,7 @@ import datetime
 import torch
 
 from model import ViTModel, model_dict
-from data_aug.cl_dataset import ContrastiveLearningDataset
+from cl_dataset import ContrastiveLearningDataset
 from simclr import SimCLR
 
 parser = argparse.ArgumentParser(description='PyTorch SimCLR')
@@ -23,7 +23,7 @@ parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
 parser.add_argument('-data', metavar='DIR',
                     help='path to dataset')
 parser.add_argument('-dataset-name', default='echonet-dynamic',
-                    help='dataset name', choices=['echonet-dynamic'])
+                    help='dataset name', choices=['echonet-dynamic', 'cifar10'])
 parser.add_argument('-b', '--batch-size', default=256, type=int,
                     metavar='N',
                     help='mini-batch size (default: 256), this is the total '
@@ -62,23 +62,24 @@ def main():
     args.model_dict = model_dict
 
     data = ContrastiveLearningDataset(args.data)
-    dataset = data.get_dataset(args.dataset_name, args.arch, args.model_dict)
+    dataset = data.get_dataset(args.dataset_name)
 
-    train_data = dataset["TRAIN"]
     train_loader = torch.utils.data.DataLoader(
-        train_data, batch_size=args.batch_size, shuffle=True,
+        dataset, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True, drop_last=True
     )
 
     model = ViTModel(base_model=args.arch)
     model = model.to(args.device)
+
+    print(next(model.parameters()).dtype)
     
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 
                                                            last_epoch=-1)
     
     simclr_model = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
-    simclr_model.train(train_loader)
+    # simclr_model.train(train_loader)
 
 if __name__ == "__main__":
     setup_logging(Path("./logs"))

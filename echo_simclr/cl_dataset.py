@@ -48,7 +48,7 @@ class ContrastiveLearningDataset:
         data_transforms = transforms.Compose([transforms.ToPILImage(),
                                               transforms.RandomResizedCrop(size=size),
                                               transforms.RandomApply([color_jitter], p=0.8),
-                                              transforms.RandomApply([transforms.GaussianBlur(kernel_size=int(0.1 * size | 1))]),
+                                              transforms.RandomApply([transforms.GaussianBlur(kernel_size=int(0.1 * size) | 1)]),
                                               transforms.ToTensor()])
         return data_transforms
     

@@ -1,7 +1,6 @@
 import torch.nn as nn
 from torchvision.models.vision_transformer import vit_b_16, vit_l_16, vit_h_14
 
-# NOTE: FOR SYNTAX AND CACHING, GENERAL MODEL ARCHETYPE STARTS FOLLOWED BY AN "_". E.G. "vit_b_16"
 model_dict = {
     "vit_b_16": vit_b_16(image_size=112),
     "vit_l_16": vit_l_16(image_size=112),
