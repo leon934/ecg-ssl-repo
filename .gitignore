@@ -2,3 +2,5 @@
 /.venv
 /echo_simclr/logs
 /echo_simclr/runs
+/models
+/runs
