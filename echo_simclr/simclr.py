@@ -66,18 +66,13 @@ class SimCLR(object):
                 images = torch.cat(images, dim=0).to(self.args.device)
 
                 features = self.model(images)
-                logits, labels = self.info_nce_loss(features)
+                # logits, labels = self.info_nce_loss(features)
 
-                loss = self.criterion(logits, labels)
-
-                logging.info(f"loss : {loss.item()}")
+                # loss = self.criterion(logits, labels)
+                loss = features.pow(2).mean()
             
                 self.optimizer.zero_grad()
                 loss.backward()
-
-                for name, p in self.model.named_parameters():
-                    if p.grad is not None:
-                        logging.info(f"{name} grad : {p.grad.abs().max().item()}")
 
                 self.optimizer.step()
 
@@ -85,11 +80,11 @@ class SimCLR(object):
                     self.scheduler.step()
 
                 if n_iter % self.args.log_every_n_steps == 0:
-                    top1, top5 = accuracy(logits, labels, topk=(1, 5))
+                    # top1, top5 = accuracy(logits, labels, topk=(1, 5))
 
                     self.writer.add_scalar('loss', loss, global_step=n_iter)
-                    self.writer.add_scalar('acc/top1', top1[0], global_step=n_iter)
-                    self.writer.add_scalar('acc/top5', top5[0], global_step=n_iter)
+                    # self.writer.add_scalar('acc/top1', top1[0], global_step=n_iter)
+                    # self.writer.add_scalar('acc/top5', top5[0], global_step=n_iter)
                     self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
                 
                 n_iter += 1
@@ -107,5 +102,6 @@ class SimCLR(object):
             }, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
-            logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
+            # logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
+            logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}")
         logging.info("Training finished.")
