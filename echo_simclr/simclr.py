@@ -66,11 +66,9 @@ class SimCLR(object):
                 images = torch.cat(images, dim=0).to(self.args.device)
 
                 features = self.model(images)
-                # logits, labels = self.info_nce_loss(features)
+                logits, labels = self.info_nce_loss(features)
 
-                # loss = self.criterion(logits, labels)
-                loss = features.pow(2).mean()
-                logging.info(f"loss : {loss.item()}")
+                loss = self.criterion(logits, labels)
             
                 self.optimizer.zero_grad()
                 loss.backward()
