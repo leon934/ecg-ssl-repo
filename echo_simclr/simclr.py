@@ -76,8 +76,8 @@ class SimCLR(object):
             
                 self.optimizer.zero_grad()
                 scaler.scale(loss).backward()
-
                 scaler.step(self.optimizer)
+                scaler.update()
 
                 if n_iter % self.args.log_every_n_steps == 0:
                     # top1, top5 = accuracy(logits, labels, topk=(1, 5))
