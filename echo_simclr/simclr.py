@@ -68,7 +68,7 @@ class SimCLR(object):
             for images, _ in train_loader:
                 images = torch.cat(images, dim=0).to(self.args.device)
 
-                with autocast(enabled=self.args.fp16_precision):
+                with autocast(device_type=self.args.device, enabled=self.args.fp16_precision):
                     features = self.model(images)
                     logits, labels = self.info_nce_loss(features)
 
@@ -107,5 +107,5 @@ class SimCLR(object):
 
             # logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
             logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}")
-            
+
         logging.info("Training finished.")
