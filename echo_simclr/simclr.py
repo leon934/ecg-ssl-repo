@@ -5,6 +5,7 @@ from pathlib import Path
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
+from torch.amp import GradScaler, autocast
 
 from utils import accuracy, save_checkpoint, save_config_file
 
@@ -61,22 +62,22 @@ class SimCLR(object):
 
         date = datetime.datetime.now()
 
+        scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
+
         for curr_epoch in range(self.args.epochs):
             for images, _ in train_loader:
                 images = torch.cat(images, dim=0).to(self.args.device)
 
-                features = self.model(images)
-                logits, labels = self.info_nce_loss(features)
+                with autocast(enabled=self.args.fp16_precision):
+                    features = self.model(images)
+                    logits, labels = self.info_nce_loss(features)
 
-                loss = self.criterion(logits, labels)
+                    loss = self.criterion(logits, labels)
             
                 self.optimizer.zero_grad()
-                loss.backward()
+                scaler.scale(loss).backward()
 
-                self.optimizer.step()
-
-                if self.scheduler is not None:
-                    self.scheduler.step()
+                scaler.step(self.optimizer)
 
                 if n_iter % self.args.log_every_n_steps == 0:
                     # top1, top5 = accuracy(logits, labels, topk=(1, 5))
@@ -87,6 +88,9 @@ class SimCLR(object):
                     self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
                 
                 n_iter += 1
+
+            if curr_epoch >= 10:
+                self.scheduler.step()
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
@@ -103,4 +107,5 @@ class SimCLR(object):
 
             # logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
             logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}")
+            
         logging.info("Training finished.")

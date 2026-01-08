@@ -41,6 +41,8 @@ parser.add_argument('--gpu-index', default=0, type=int,
                     help='GPU index to use (default: 0)')
 parser.add_argument('-j', '--workers', default=12, type=int, metavar='N',
                     help='number of data loading workers (default: 12)')
+parser.add_argument('--fp16-precision', action='store_true',
+                    help='Whether or not to use 16-bit precision GPU training.')
 
 def setup_logging(log_dir: Path):
     log_dir.mkdir(parents=True, exist_ok=True)
