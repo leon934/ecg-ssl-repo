@@ -71,8 +71,6 @@ def main():
 
     model = ViTModel(base_model=args.arch, dataset_name=args.dataset_name)
     model = model.to(args.device)
-
-    print(next(model.parameters()).dtype)
     
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 

@@ -34,7 +34,7 @@ class ViTModel(nn.Module):
 
         # add mlp head to vit
         dim_mlp = self.backbone.heads.head.in_features
-        self.backbone.heads.head = nn.Sequential(nn.Linear(dim_mlp, dim_mlp), nn.ReLU(), self.backbone.heads.head)
+        self.backbone.heads.head = nn.Sequential(nn.Linear(dim_mlp, dim_mlp), nn.ReLU(), nn.Linear(dim_mlp, 256))
 
     def forward(self, x):
         return self.backbone(x)
