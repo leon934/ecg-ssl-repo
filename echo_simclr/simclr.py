@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
-import torchvision.utils as vutils
+from torch.amp import GradScaler, autocast
 
 from utils import accuracy, save_checkpoint, save_config_file
 
@@ -55,38 +55,29 @@ class SimCLR(object):
         save_config_file(self.writer.log_dir, self.args)
 
         n_iter = 0
-        logging.info(f"Start SimCLR training for {self.args.epochs} epochs.")
+        logging.info(f"Start SimCLR training for {self.args.epochs} epochs with {self.args.dataset_name} dataset.")
         logging.info(f"Using device: {self.args.device}.")
         logging.info(f"Model parameter device: {next(self.model.parameters()).device}")
         logging.info(f"CUDA disabled: {self.args.disable_cuda}.")
 
         date = datetime.datetime.now()
 
+        scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
+
         for curr_epoch in range(self.args.epochs):
             for images, _ in train_loader:
                 images = torch.cat(images, dim=0).to(self.args.device)
 
-                if n_iter == 0:
-                    vutils.save_image(images[:32], "debug_batch.png", normalize=True)
+                with autocast(device_type=self.args.device, enabled=self.args.fp16_precision):
+                    features = self.model(images)
+                    logits, labels = self.info_nce_loss(features)
 
-                features = self.model(images)
-                logits, labels = self.info_nce_loss(features)
-
-                loss = self.criterion(logits, labels)
-
-                logging.info(f"loss : {loss.item()}")
+                    loss = self.criterion(logits, labels)
             
                 self.optimizer.zero_grad()
-                loss.backward()
-
-                for name, p in self.model.named_parameters():
-                    if p.grad is not None:
-                        logging.info(f"{name} grad : {p.grad.abs().max().item()}")
-
-                self.optimizer.step()
-
-                if self.scheduler is not None:
-                    self.scheduler.step()
+                scaler.scale(loss).backward()
+                scaler.step(self.optimizer)
+                scaler.update()
 
                 if n_iter % self.args.log_every_n_steps == 0:
                     top1, top5 = accuracy(logits, labels, topk=(1, 5))
@@ -97,6 +88,9 @@ class SimCLR(object):
                     self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
                 
                 n_iter += 1
+
+            if curr_epoch >= 10:
+                self.scheduler.step()
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
@@ -111,6 +105,7 @@ class SimCLR(object):
             }, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
-            logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
+            # logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
+            logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}")
 
-        logging.info("Training has finished.")
+        logging.info("Training finished.")
