@@ -1,6 +1,5 @@
 
 import numpy as np
-from torch.utils.data import Dataset
 import av
 import pandas as pd
 from tqdm import tqdm

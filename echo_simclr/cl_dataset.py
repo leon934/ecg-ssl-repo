@@ -1,7 +1,8 @@
 from pathlib import Path
+from PIL import Image
 
 from torchvision.transforms import transforms
-from torchvision import transforms, datasets
+from torchvision import datasets
 from torch.utils.data import Dataset
 import numpy as np
 
@@ -22,16 +23,17 @@ class ContrastiveLearningViewGenerator(object):
 
 # dataset wrapper to pass into pytorch dataloader class
 class FrameDataset(Dataset):
-    def __init__(self, array, length, transform):
+    def __init__(self, array, transform):
         self.array = array
-        self.length = length
+        self.length = len(self.array)
         self.transform = transform
 
     def __len__(self):
         return self.length
     
     def __getitem__(self, index):
-        return self.transform(self.array[index]), 0
+        curr_frame = Image.fromarray(self.array[index])
+        return self.transform(curr_frame), 0
 
 class ContrastiveLearningDataset:
     def __init__(self, root_folder: str):
@@ -41,8 +43,7 @@ class ContrastiveLearningDataset:
     def get_simclr_pipeline_transform(size, s=1):
         """Return a set of data augmentation transformations as described in the SimCLR paper."""
         color_jitter = transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
-        data_transforms = transforms.Compose([
-                                              transforms.RandomResizedCrop(size=size),
+        data_transforms = transforms.Compose([transforms.RandomResizedCrop(size=size),
                                               transforms.RandomApply([color_jitter], p=0.8),
                                               transforms.RandomApply([transforms.GaussianBlur(kernel_size=int(0.1 * size) | 1)]),
                                               transforms.ToTensor()])
@@ -59,7 +60,6 @@ class ContrastiveLearningDataset:
                                                         ),
                                                         download=True),
             "echonet-dynamic": lambda: FrameDataset(array=echonet_dataset(self.root_folder),
-                                                    length=echonet_dataset(self.root_folder).shape[0],
                                                     transform=ContrastiveLearningViewGenerator(
                                                         self.get_simclr_pipeline_transform(112)
                                                     ))
