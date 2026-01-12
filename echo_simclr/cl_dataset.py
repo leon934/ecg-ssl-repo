@@ -87,7 +87,8 @@ class ContrastiveLearningDataset:
         color_jitter = transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
         data_transforms = transforms.Compose([transforms.RandomResizedCrop(size=size),
                                               transforms.RandomApply([color_jitter], p=0.8),
-                                              transforms.RandomApply([transforms.GaussianBlur(kernel_size=int(0.1 * size) | 1)])])
+                                              transforms.RandomApply([transforms.GaussianBlur(kernel_size=int(0.1 * size) | 1)]),
+                                              transforms.ToTensor()])
         return data_transforms
     
     @staticmethod
@@ -104,7 +105,8 @@ class ContrastiveLearningDataset:
             transformations.append(transforms.GaussianBlur(kernel_size=int(0.1 * size) | 1))
 
         data_transforms = transforms.Compose([transforms.RandomResizedCrop(size=size)]
-                                           + transformations)
+                                           + transformations
+                                           + [transforms.ToTensor()])
         return data_transforms
     
     def get_dataset(self, name: str, args: dict)-> Union[FrameDataset, VideoDataset]:
