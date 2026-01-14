@@ -38,7 +38,7 @@ def echonet_dataset(root_folder: str, args: dict):
             curr_arr.append(video_arr)
 
     # keep only np arr, not idx
-    np.savez(root_folder / f"echonet-vit-np_arr-{args.model}.npz", **{k: v[0] for k, v in dataset_dict.items()})
+    np.savez(root_folder / f"echonet-vit-np_arr-{args.model}.npz", **{k: np.array(v, dtype=object) for k, v in dataset_dict.items()})
     print(f"Finished saving EchoNet NumPy array for {args.model} model.")
 
     return dataset_dict["TRAIN"]

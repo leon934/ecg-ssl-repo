@@ -167,10 +167,12 @@ def main():
 
     model = get_model(model_name=args.model, dataset_name=args.dataset_name, clip_length=args.clip_length, arch_type=args.arch)
     model = model.to(args.device)
-    
+
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 
                                                            last_epoch=-1)
+    
+    logging.info(f"Starting training with {args.model} model.")
     
     simclr_model = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
     simclr_model.train(train_loader)

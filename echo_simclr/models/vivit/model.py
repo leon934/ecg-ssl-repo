@@ -7,8 +7,6 @@ class ViViTModel(nn.Module):
     def __init__(self, image_size: int, channels: int, **kwargs):
         super(ViViTModel, self).__init__()
 
-        print(kwargs)
-
         clip_length = kwargs["clip_length"]
 
         config = VivitConfig(
