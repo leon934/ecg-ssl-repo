@@ -7,7 +7,7 @@ from tqdm import tqdm
 def echonet_dataset(root_folder: str, args: dict):
     if (dataset_path := root_folder / f"echonet-vit-np_arr-{args.model}.npz").exists():
         print(f"Found saved EchoNet-Dynamic dataset for {args.model} model. Skipping creating views.")
-        dataset_dict = np.load(dataset_path, mmap_mode="r")
+        dataset_dict = np.load(dataset_path, mmap_mode="r", allow_pickle=True)
 
         return dataset_dict["TRAIN"]
 
@@ -38,7 +38,7 @@ def echonet_dataset(root_folder: str, args: dict):
             curr_arr.append(video_arr)
 
     # keep only np arr, not idx
-    np.savez(root_folder / f"echonet-vit-np_arr-{args.model}.npz", **{k: np.array(v, dtype=object) for k, v in dataset_dict.items()})
+    np.savez(root_folder / f"echonet-vit-np_arr-{args.model}.npz", **{k: np.array(v, dtype=object) for k, v in dataset_dict.items()}, )
     print(f"Finished saving EchoNet NumPy array for {args.model} model.")
 
     return dataset_dict["TRAIN"]

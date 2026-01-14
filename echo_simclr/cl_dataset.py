@@ -21,7 +21,7 @@ class ContrastiveLearningViewGenerator(object):
         self.base_transform = base_transform
         self.n_views = 2
 
-    def __call__(self, x) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __call__(self, x: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor]:
         return [self.base_transform(x) for _ in range(self.n_views)]
 
 # dataset wrapper to pass into pytorch dataloader class
@@ -85,7 +85,8 @@ class ContrastiveLearningDataset:
     def get_simclr_frame_pipeline_transform(size, s=1) -> transforms.Compose:
         """Return a set of data augmentation transformations as described in the SimCLR paper."""
         color_jitter = transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
-        data_transforms = transforms.Compose([transforms.RandomResizedCrop(size=size),
+        data_transforms = transforms.Compose([transforms.ToPILImage(mode="L"),
+                                              transforms.RandomResizedCrop(size=size),
                                               transforms.RandomApply([color_jitter], p=0.8),
                                               transforms.RandomApply([transforms.GaussianBlur(kernel_size=int(0.1 * size) | 1)]),
                                               transforms.ToTensor()])
