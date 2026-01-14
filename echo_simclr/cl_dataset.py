@@ -105,9 +105,9 @@ class ContrastiveLearningDataset:
         if random.random() < 0.5:
             transformations.append(transforms.GaussianBlur(kernel_size=int(0.1 * size) | 1))
 
-        data_transforms = transforms.Compose([transforms.RandomResizedCrop(size=size)]
-                                           + transformations
-                                           + [transforms.ToTensor()])
+        data_transforms = transforms.Compose([transforms.ToPILImage(mode="L"), transforms.RandomResizedCrop(size=size)]
+                                            + transformations
+                                            + [transforms.ToTensor()])
         return data_transforms
     
     def get_dataset(self, name: str, args: dict)-> Union[FrameDataset, VideoDataset]:

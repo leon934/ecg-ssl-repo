@@ -73,8 +73,6 @@ class SimCLR(object):
                     logits, labels = self.info_nce_loss(features)
 
                     loss = self.criterion(logits, labels)
-            
-                exit(0)
 
                 self.optimizer.zero_grad()
                 scaler.scale(loss).backward()
