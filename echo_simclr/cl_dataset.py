@@ -25,13 +25,13 @@ class ContrastiveLearningViewGenerator(object):
 
 # dataset wrapper to pass into pytorch dataloader class
 class FrameDataset(Dataset):
-    def __init__(self, array: torch.Tensor, transform: Callable, **kwargs):
+    def __init__(self, array: np.ndarray, transform: Callable, **kwargs):
         if kwargs:
             raise TypeError(
                 f"FrameDataset got unexpected arguments: {kwargs.keys()}"
             )
 
-        self.array = torch.from_numpy(array)
+        self.array = array
         self.length = len(self.array)
         self.transform = transform
 
@@ -45,9 +45,9 @@ class FrameDataset(Dataset):
         return self.transform(curr_video[sampled_frame_idx]), 0
 
 class VideoDataset(Dataset):
-    def __init__(self, array: torch.Tensor, transform: Callable, clip_length: int):
+    def __init__(self, array: np.ndarray , transform: Callable, clip_length: int):
         # [T, C, H, W]
-        self.vid_array = torch.from_numpy(array)
+        self.vid_array = array
         self.length = len(self.vid_array)
         self.transform = transform
         self.clip_length = clip_length
@@ -80,7 +80,9 @@ class ContrastiveLearningDataset:
     def get_simclr_pipeline_transform(size, s=1) -> v2.Compose:
         """Return a set of data augmentation transformations as described in the SimCLR paper."""
         color_jitter = v2.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
-        data_transforms = v2.Compose([v2.RandomResizedCrop(size=size),
+        data_transforms = v2.Compose([v2.ToImage(),
+                                      v2.ToDtype(torch.float32),
+                                      v2.RandomResizedCrop(size=size),
                                       v2.RandomApply([color_jitter], p=0.8),
                                       v2.RandomApply([v2.GaussianBlur(kernel_size=int(0.1 * size) | 1)], p=0.5)])
         return data_transforms
