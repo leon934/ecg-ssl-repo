@@ -42,7 +42,9 @@ class FrameDataset(Dataset):
         curr_video = self.array[index]
         sampled_frame_idx = random.randint(0, len(curr_video) - 1)
 
-        return self.transform(curr_video[sampled_frame_idx]), 0
+        frame = torch.from_numpy(curr_video[sampled_frame_idx])
+
+        return self.transform(frame), 0
 
 class VideoDataset(Dataset):
     def __init__(self, array: np.ndarray , transform: Callable, clip_length: int):
@@ -63,7 +65,7 @@ class VideoDataset(Dataset):
         end_idx = len(curr_video) - self.clip_length
         clip_start_idx = random.randint(0, end_idx)
 
-        curr_clip = curr_video[clip_start_idx : clip_start_idx + self.clip_length]
+        curr_clip = torch.from_numpy(curr_video[clip_start_idx : clip_start_idx + self.clip_length])
 
         return self.transform(curr_clip), 0
 
@@ -80,9 +82,7 @@ class ContrastiveLearningDataset:
     def get_simclr_pipeline_transform(size, s=1) -> v2.Compose:
         """Return a set of data augmentation transformations as described in the SimCLR paper."""
         color_jitter = v2.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
-        data_transforms = v2.Compose([v2.ToImage(),
-                                      v2.ToDtype(torch.float32),
-                                      v2.RandomResizedCrop(size=size),
+        data_transforms = v2.Compose([v2.RandomResizedCrop(size=size),
                                       v2.RandomApply([color_jitter], p=0.8),
                                       v2.RandomApply([v2.GaussianBlur(kernel_size=int(0.1 * size) | 1)], p=0.5)])
         return data_transforms
