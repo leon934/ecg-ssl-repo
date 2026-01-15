@@ -32,7 +32,7 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
         curr_split = split_map[file_name]
         curr_arr = dataset_dict[curr_split]
 
-        video_arr = np.stack([np.expand_dims(frame.to_ndarray(format="gray"), axis=1) for frame in obj.decode(video=0)])
+        video_arr = np.expand_dims(np.stack([frame.to_ndarray(format="gray") for frame in obj.decode(video=0)]), axis=1)
         
         if args.model == "vit": 
             curr_arr.append(video_arr)
@@ -41,7 +41,7 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
             curr_arr.append(video_arr)
 
     # keep only np arr, not idx
-    np.savez(dataset_path, **{k: np.array(v, dtype=object) for k, v in dataset_dict.items()})
+    np.savez(dataset_path, **{k: np.array(v, dtype=object) for k, v in dataset_dict.items()}, )
     print(f"Finished saving EchoNet NumPy array for {args.model} model.")
 
     return dataset_dict["TRAIN"]
