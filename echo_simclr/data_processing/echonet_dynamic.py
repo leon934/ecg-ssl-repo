@@ -1,11 +1,14 @@
+from pathlib import Path
 
 import numpy as np
 import av
 import pandas as pd
 from tqdm import tqdm
 
-def echonet_dataset(root_folder: str, args: dict):
-    if (dataset_path := root_folder / f"echonet-vit-np_arr-{args.model}.npz").exists():
+def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
+    dataset_path = root_folder / f"echonet-np_arr-{args.model}.npz"
+
+    if dataset_path.exists():
         print(f"Found saved EchoNet-Dynamic dataset for {args.model} model. Skipping creating views.")
         dataset_dict = np.load(dataset_path, mmap_mode="r", allow_pickle=True)
 
@@ -29,7 +32,7 @@ def echonet_dataset(root_folder: str, args: dict):
         curr_split = split_map[file_name]
         curr_arr = dataset_dict[curr_split]
 
-        video_arr = np.stack([frame.to_ndarray(format="gray") for frame in obj.decode(video=0)])
+        video_arr = np.stack([np.expand_dims(frame.to_ndarray(format="gray"), axis=1) for frame in obj.decode(video=0)])
         
         if args.model == "vit": 
             curr_arr.append(video_arr)
@@ -38,7 +41,7 @@ def echonet_dataset(root_folder: str, args: dict):
             curr_arr.append(video_arr)
 
     # keep only np arr, not idx
-    np.savez(root_folder / f"echonet-vit-np_arr-{args.model}.npz", **{k: np.array(v, dtype=object) for k, v in dataset_dict.items()}, )
+    np.savez(dataset_path, **{k: np.array(v, dtype=object) for k, v in dataset_dict.items()})
     print(f"Finished saving EchoNet NumPy array for {args.model} model.")
 
     return dataset_dict["TRAIN"]
