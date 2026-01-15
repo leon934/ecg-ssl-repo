@@ -4,8 +4,7 @@ from typing import Callable, Tuple, Union
 import random
 
 import torch
-from torchvision.transforms import transforms
-from torchvision import datasets
+from torchvision.transforms import v2
 from torch.utils.data import Dataset
 import numpy as np
 
@@ -32,7 +31,7 @@ class FrameDataset(Dataset):
                 f"FrameDataset got unexpected arguments: {kwargs.keys()}"
             )
 
-        self.array = array
+        self.array = torch.from_numpy(array)
         self.length = len(self.array)
         self.transform = transform
 
@@ -48,7 +47,7 @@ class FrameDataset(Dataset):
 class VideoDataset(Dataset):
     def __init__(self, array: torch.Tensor, transform: Callable, clip_length: int):
         # [T, C, H, W]
-        self.vid_array = array
+        self.vid_array = torch.from_numpy(array)
         self.length = len(self.vid_array)
         self.transform = transform
         self.clip_length = clip_length
@@ -66,11 +65,7 @@ class VideoDataset(Dataset):
 
         curr_clip = curr_video[clip_start_idx : clip_start_idx + self.clip_length]
 
-        # # todo: maybe faster way to iterate thru frames such as vectorizing?
-        for i, frame in enumerate(curr_clip):
-            curr_clip[i] = self.transform(frame)
-
-        return curr_clip
+        return self.transform(curr_clip), 0
 
 class ContrastiveLearningDataset:
     @dataclass(frozen=True)
@@ -80,57 +75,25 @@ class ContrastiveLearningDataset:
 
     def __init__(self, root_folder: str):
         self.root_folder = Path(root_folder)
-
-    @staticmethod
-    def get_simclr_frame_pipeline_transform(size, s=1) -> transforms.Compose:
-        """Return a set of data augmentation transformations as described in the SimCLR paper."""
-        color_jitter = transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
-        data_transforms = transforms.Compose([transforms.ToPILImage(mode="L"),
-                                              transforms.RandomResizedCrop(size=size),
-                                              transforms.RandomApply([color_jitter], p=0.8),
-                                              transforms.RandomApply([transforms.GaussianBlur(kernel_size=int(0.1 * size) | 1)]),
-                                              transforms.ToTensor()])
-        return data_transforms
     
     @staticmethod
-    def get_simclr_video_pipeline_transform(size, s=1) -> transforms.Compose:
+    def get_simclr_pipeline_transform(size, s=1) -> v2.Compose:
         """Return a set of data augmentation transformations as described in the SimCLR paper."""
-        color_jitter = transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
-        transformations = []
-
-        # fixes transformation for a given video
-        if random.random() < 0.8:
-            transformations.append(color_jitter)
-        
-        if random.random() < 0.5:
-            transformations.append(transforms.GaussianBlur(kernel_size=int(0.1 * size) | 1))
-
-        data_transforms = transforms.Compose([transforms.ToPILImage(mode="L"), transforms.RandomResizedCrop(size=size)]
-                                            + transformations
-                                            + [transforms.ToTensor()])
+        color_jitter = v2.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
+        data_transforms = v2.Compose([v2.RandomResizedCrop(size=size),
+                                      v2.RandomApply([color_jitter], p=0.8),
+                                      v2.RandomApply([v2.GaussianBlur(kernel_size=int(0.1 * size) | 1)], p=0.5)])
         return data_transforms
     
     def get_dataset(self, name: str, args: dict)-> Union[FrameDataset, VideoDataset]:
         # build dataset based on path (and name for scalability)
         # must lead to the root /EchoNet-Dynamic folder
-        model_spec = {
-            "vit": self.DatasetSpec(
-                transform_func=self.get_simclr_frame_pipeline_transform,
-                dataset_class=FrameDataset
-            ),
-            "vivit": self.DatasetSpec(
-                transform_func=self.get_simclr_video_pipeline_transform,
-                dataset_class=VideoDataset
-            ) 
-        }
-
-        transform_func = model_spec[args.model].transform_func
-        DatasetClass = model_spec[args.model].dataset_class
+        DatasetClass = FrameDataset if args.model == "vit" else VideoDataset
         
         valid_datasets = {
             "echonet-dynamic": lambda: DatasetClass(array=echonet_dataset(self.root_folder, args),
                                                     transform=ContrastiveLearningViewGenerator(
-                                                        transform_func(112)
+                                                        self.get_simclr_pipeline_transform(112)
                                                     ),
                                                     clip_length=args.clip_length if args.model == "vivit" else None)
         }
