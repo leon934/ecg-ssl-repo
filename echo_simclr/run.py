@@ -162,7 +162,7 @@ def main():
 
     train_loader = torch.utils.data.DataLoader(
         dataset, batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True, drop_last=True
+        num_workers=0, pin_memory=True, drop_last=True
     )
 
     model = get_model(model_name=args.model, dataset_name=args.dataset_name, clip_length=args.clip_length, arch_type=args.arch)

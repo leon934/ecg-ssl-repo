@@ -26,11 +26,6 @@ class ContrastiveLearningViewGenerator(object):
 # dataset wrapper to pass into pytorch dataloader class
 class FrameDataset(Dataset):
     def __init__(self, array: np.ndarray, transform: Callable, **kwargs):
-        if kwargs:
-            raise TypeError(
-                f"FrameDataset got unexpected arguments: {kwargs.keys()}"
-            )
-
         self.array = array
         self.length = len(self.array)
         self.transform = transform
@@ -47,7 +42,7 @@ class FrameDataset(Dataset):
         return self.transform(frame), 0
 
 class VideoDataset(Dataset):
-    def __init__(self, array: np.ndarray , transform: Callable, clip_length: int):
+    def __init__(self, array: np.ndarray, transform: Callable, clip_length: int):
         # [T, C, H, W]
         self.vid_array = array
         self.length = len(self.vid_array)
