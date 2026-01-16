@@ -4,3 +4,6 @@
 /echo_simclr/runs
 /models
 /runs
+__pycache__
+/jobs
+/logs

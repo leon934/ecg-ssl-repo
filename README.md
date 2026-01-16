@@ -102,6 +102,10 @@ This specifies the model architecture and the dataset root path. Below is a full
 
     Enable mixed-precision (16-bit / FP16) training on GPU.
 
+-   `--clip-length`
+
+    Lets users decide clip length when training with ViViT.
+
 ### Example with additional flags
 
 ```bash
