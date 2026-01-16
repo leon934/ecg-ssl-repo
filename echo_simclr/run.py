@@ -4,6 +4,7 @@ from pathlib import Path
 import datetime
 
 import torch
+from accelerate import Accelerator
 
 from models.model import get_model
 from models.vit.model import model_dict
@@ -117,6 +118,11 @@ parser.add_argument(
     metavar='N',
     help='number of data loading workers (default: 12)'
 )
+parser.add_argument(
+    '--enable_hf_acceleration',
+    action='store_true',
+    help='number of data loading workers (default: 12)'
+)
 
 # -------------------------------------------------
 # Logging
@@ -166,15 +172,19 @@ def main():
     )
 
     model = get_model(model_name=args.model, dataset_name=args.dataset_name, clip_length=args.clip_length, arch_type=args.arch)
-    model = model.to(args.device)
+    # model = model.to(args.device)
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 
                                                            last_epoch=-1)
     
+    # moves to gpu if possible
+    accelerator = Accelerator(fp16=args.fp16_precision)
+    model, optimizer, train_loader, scheduler = accelerator.prepare(model, optimizer, train_loader, scheduler)
+
     logging.info(f"Starting training with {args.model} model.")
     
-    simclr_model = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
+    simclr_model = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, accelerator=accelerator, args=args)
     simclr_model.train(train_loader)
 
 if __name__ == "__main__":

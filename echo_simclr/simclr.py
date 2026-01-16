@@ -6,25 +6,30 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 from torch.amp import GradScaler, autocast
+from accelerate import Accelerator
 
 from utils import accuracy, save_checkpoint, save_config_file
 
 torch.manual_seed(0)
 
 class SimCLR(object):
-    def __init__(self, model, optimizer, scheduler, args):
-        self.model = model.to(args.device)
+    def __init__(self, model, optimizer, scheduler, accelerator: Accelerator, args):
+        # self.model = model.to(args.device)
+        self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
+        self.accelerator = accelerator
         self.args = args
+        self.device = self.accelerator.device
 
         self.writer = SummaryWriter()
-        self.criterion = torch.nn.CrossEntropyLoss().to(self.args.device)
+        # self.criterion = torch.nn.CrossEntropyLoss().to(self.args.device)
+        self.criterion = torch.nn.CrossEntropyLoss()
 
     def info_nce_loss(self, features):
         labels = torch.cat([torch.arange(self.args.batch_size) for _ in range(2)], dim=0)
         labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
-        labels = labels.to(self.args.device)
+        labels = labels.to(self.device)
 
         features = F.normalize(features, dim=1)
 
@@ -34,7 +39,7 @@ class SimCLR(object):
         # assert similarity_matrix.shape == labels.shape
 
         # discard the main diagonal from both: labels and similarities matrix
-        mask = torch.eye(labels.shape[0], dtype=torch.bool).to(self.args.device)
+        mask = torch.eye(labels.shape[0], dtype=torch.bool, device=self.device)
         labels = labels[~mask].view(labels.shape[0], -1)
         similarity_matrix = similarity_matrix[~mask].view(similarity_matrix.shape[0], -1)
         # assert similarity_matrix.shape == labels.shape
@@ -46,7 +51,7 @@ class SimCLR(object):
         negatives = similarity_matrix[~labels.bool()].view(similarity_matrix.shape[0], -1)
 
         logits = torch.cat([positives, negatives], dim=1)
-        labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.args.device)
+        labels = torch.zeros(logits.shape[0], dtype=torch.long, device=self.device)
 
         logits = logits / self.args.temperature
         return logits, labels
@@ -57,27 +62,30 @@ class SimCLR(object):
         n_iter = 0
         logging.info(f"Start SimCLR training for {self.args.epochs} epochs with {self.args.dataset_name} dataset.")
         logging.info(f"Using device: {self.args.device}.")
-        logging.info(f"Model parameter device: {next(self.model.parameters()).device}")
         logging.info(f"CUDA disabled: {self.args.disable_cuda}.")
 
         date = datetime.datetime.now()
 
-        scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
+        # scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
 
         for curr_epoch in range(self.args.epochs):
             for images, _ in train_loader:
                 images = torch.cat(images, dim=0).to(self.args.device)
 
-                with autocast(device_type=self.args.device, enabled=self.args.fp16_precision):
+                with self.accelerator.autocast():
                     features = self.model(images)
                     logits, labels = self.info_nce_loss(features)
 
                     loss = self.criterion(logits, labels)
 
+                self.accelerator.backward(loss)
+
                 self.optimizer.zero_grad()
-                scaler.scale(loss).backward()
-                scaler.step(self.optimizer)
-                scaler.update()
+                self.optimizer.step()
+
+                # scaler.scale(loss).backward()
+                # scaler.step(self.optimizer)
+                # scaler.update()
 
                 if n_iter % self.args.log_every_n_steps == 0:
                     top1, top5 = accuracy(logits, labels, topk=(1, 5))
@@ -99,13 +107,13 @@ class SimCLR(object):
             
             save_checkpoint({
                 'epoch': self.args.epochs,
+                'model': self.args.model,
                 'arch': self.args.arch,
                 'state_dict': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
             }, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
-            # logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
-            logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}")
+            logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
 
         logging.info("Training finished.")
