@@ -8,3 +8,4 @@ __pycache__
 /jobs
 /logs
 .DS_Store
+*.pth

@@ -7,7 +7,6 @@ import torch
 from accelerate import Accelerator
 
 from models.model import get_model
-from models.vit.model import model_dict
 from cl_dataset import ContrastiveLearningDataset
 from simclr import SimCLR
 
@@ -23,13 +22,6 @@ parser.add_argument(
     help='available models: vivit and vit',
     required=True
 )
-parser.add_argument(
-    '-a', '--arch',
-    metavar='ARCH',
-    choices=model_dict.keys(),
-    default=None,
-    help='model architecture: ' + ' | '.join(model_dict)
-)
 
 # -------------------------------------------------
 # Dataset
@@ -37,7 +29,7 @@ parser.add_argument(
 parser.add_argument(
     '-data',
     metavar='DIR',
-    help='path to dataset',
+    help='path to dataset directory',
     required=True
 )
 parser.add_argument(
@@ -121,7 +113,7 @@ parser.add_argument(
 parser.add_argument(
     '--enable_hf_acceleration',
     action='store_true',
-    help='number of data loading workers (default: 12)'
+    help='enables acceleration for distributed training'
 )
 
 # -------------------------------------------------
@@ -161,31 +153,34 @@ def main():
         if torch.cuda.is_available() and args.gpu_index is not None and args.gpu_index >= 0
         else "cpu"
     )
-    args.model_dict = model_dict
 
-    data = ContrastiveLearningDataset(args.data)
-    dataset = data.get_dataset(args.dataset_name, args)
-
+    dataset = ContrastiveLearningDataset(
+        root_folder=args.data,
+        model_type=args.model,
+        dataset_name=args.dataset_name,
+        addl_args=args
+    )
+    train_data = dataset.get_dataset_split(name=args.dataset_name, split="TRAIN")
     train_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=args.batch_size, shuffle=True,
-        num_workers=0, pin_memory=True, drop_last=True
+        train_data, batch_size=args.batch_size, shuffle=True,
+        num_workers=args.workers, pin_memory=True, drop_last=True
     )
 
-    model = get_model(model_name=args.model, dataset_name=args.dataset_name, clip_length=args.clip_length, arch_type=args.arch)
-    # model = model.to(args.device)
+    model = get_model(model_name=args.model, dataset_name=args.dataset_name, clip_length=args.clip_length)
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 
                                                            last_epoch=-1)
     
-    # moves to gpu if possible
-    accelerator = Accelerator(fp16=args.fp16_precision)
+    # moves to gpu if possible when fp16 flag enabled
+    accelerator = Accelerator(mixed_precision="fp16") if args.fp16_precision and args.device != "cpu" else Accelerator()
+
     model, optimizer, train_loader, scheduler = accelerator.prepare(model, optimizer, train_loader, scheduler)
 
     logging.info(f"Starting training with {args.model} model.")
     
     simclr_model = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, accelerator=accelerator, args=args)
-    simclr_model.train(train_loader)
+    # simclr_model.train(train_loader)
 
 if __name__ == "__main__":
     setup_logging(Path("./logs"))

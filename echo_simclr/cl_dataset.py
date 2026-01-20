@@ -1,12 +1,14 @@
-from pathlib import Path
+import argparse
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Tuple, Union
+from pathlib import Path
 import random
+from typing import Callable, Tuple, Union
 
-import torch
-from torchvision.transforms import v2
-from torch.utils.data import Dataset
 import numpy as np
+import torch
+from torch.utils.data import Dataset
+from torchvision.transforms import v2
 
 from data_processing.echonet_dynamic import echonet_dataset
 
@@ -25,26 +27,44 @@ class ContrastiveLearningViewGenerator(object):
 
 # dataset wrapper to pass into pytorch dataloader class
 class FrameDataset(Dataset):
-    def __init__(self, array: np.ndarray, transform: Callable, **kwargs):
+    def __init__(
+            self, 
+            array: np.ndarray,
+            target_array: Union[np.ndarray, None],
+            transform: Callable,
+            **kwargs
+        ):
         self.array = array
+        self.target_array = torch.tensor(target_array)
+        
         self.length = len(self.array)
         self.transform = transform
 
     def __len__(self) -> int:
         return self.length
     
-    def __getitem__(self, index) -> torch.Tensor:
+    def __getitem__(self, index) -> Tuple[torch.Tensor, float]:
         curr_video = self.array[index]
         sampled_frame_idx = random.randint(0, len(curr_video) - 1)
 
         frame = torch.from_numpy(curr_video[sampled_frame_idx])
 
-        return self.transform(frame), 0
+        # unnecessary computation when pretraining, so we js store target_arr as None
+        Y_val = 0 if self.target_array is None else self.target_array[index]
+        return self.transform(frame), Y_val
 
 class VideoDataset(Dataset):
-    def __init__(self, array: np.ndarray, transform: Callable, clip_length: int):
+    def __init__(
+            self,
+            array: np.ndarray,
+            target_array: Union[np.ndarray, None],
+            transform: Callable,
+            clip_length: int,
+        ):
         # [T, C, H, W]
         self.vid_array = array
+        self.target_array = torch.tensor(target_array)
+
         self.length = len(self.vid_array)
         self.transform = transform
         self.clip_length = clip_length
@@ -52,8 +72,7 @@ class VideoDataset(Dataset):
     def __len__(self) -> int:
         return self.length
     
-    def __getitem__(self, index) -> torch.Tensor:
-        # [T, C, H, W]
+    def __getitem__(self, index) -> Tuple[torch.Tensor, float]:
         curr_video = self.vid_array[index]
         
         # assumes all videos >= clip_len due to dataset proc in echonet_dynamic.py
@@ -62,39 +81,68 @@ class VideoDataset(Dataset):
 
         curr_clip = torch.from_numpy(curr_video[clip_start_idx : clip_start_idx + self.clip_length])
 
-        return self.transform(curr_clip), 0
+        # unnecessary computation when pretraining, so we js store target_arr as None
+        Y_val = 0 if self.target_array is None else self.target_array[index]
+        return self.transform(curr_clip), Y_val
 
 class ContrastiveLearningDataset:
     @dataclass(frozen=True)
-    class DatasetSpec:
-        transform_func: Callable
-        dataset_class: object
+    class DatasetSplit:
+        train: np.array
+        val: np.array
+        test: np.array
 
-    def __init__(self, root_folder: str):
+    _DatasetClass_dict = {
+        "vit": FrameDataset,
+        "vivit": VideoDataset
+    }
+    # to add to available datasets, we follow arg convention of (root_folder, args)
+    _dataset_dict = {
+        "echonet-dynamic": lambda root_folder, args: echonet_dataset(root_folder, args)
+    }
+
+    def __init__(self, root_folder: str, model_type: str, dataset_name: str, addl_args: argparse.Namespace):
+        self.args = addl_args
+
         self.root_folder = Path(root_folder)
-    
+        self.DatasetClass = self._DatasetClass_dict[model_type]
+
+        # has ["FRAME_TRAIN", "EF_VAL", etc. for echonet-dataset keys]
+        # essentially "sorts" the "FRAME_TRAIN", etc. into own DatasetSplit dataclass
+        self.dataset_split_dict = defaultdict(self.DatasetSplit)
+
+        if dataset_name == "echonet-dynamic":
+            for type_split, arr in self._dataset_dict[dataset_name](self.root_folder, self.args).items():
+                data, split = type_split.split("_")
+                setattr(self.dataset_split_dict[data], split, arr)
+                
     @staticmethod
-    def get_simclr_pipeline_transform(size, s=1) -> v2.Compose:
+    def _get_simclr_pipeline_transform(size, s=1) -> v2.Compose:
         """Return a set of data augmentation transformations as described in the SimCLR paper."""
         color_jitter = v2.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
-        data_transforms = v2.Compose([v2.ToDtype(torch.float32, scale=True),
-                                      v2.RandomResizedCrop(size=size),
-                                      v2.RandomApply([color_jitter], p=0.8),
-                                      v2.RandomApply([v2.GaussianBlur(kernel_size=int(0.1 * size) | 1)], p=0.5)])
+        data_transforms = v2.Compose([
+            v2.ToDtype(torch.float32, scale=True),
+            v2.RandomResizedCrop(size=size),
+            v2.RandomApply([color_jitter], p=0.8),
+            v2.RandomApply([v2.GaussianBlur(kernel_size=int(0.1 * size) | 1)], p=0.5)
+        ])
         return data_transforms
     
-    def get_dataset(self, name: str, args: dict)-> Union[FrameDataset, VideoDataset]:
+    def get_dataset_split(
+            self, 
+            dataset_name: str, 
+            split: str, 
+            Y_name: Union[str, None]=None
+        )-> Union[FrameDataset, VideoDataset]:
         # build dataset based on path (and name for scalability)
         # must lead to the root /EchoNet-Dynamic folder
-        DatasetClass = FrameDataset if args.model == "vit" else VideoDataset
-        
         valid_datasets = {
-            "echonet-dynamic": lambda: DatasetClass(array=echonet_dataset(self.root_folder, args),
-                                                    transform=ContrastiveLearningViewGenerator(
-                                                        self.get_simclr_pipeline_transform(112)
-                                                    ),
-                                                    clip_length=args.clip_length if args.model == "vivit" else None)
+            "echonet-dynamic": lambda: self.DatasetClass(
+                array=getattr(self.dataset_split_dict["X"], split.lower()),
+                target_var_arr=getattr(self.dataset_split_dict[Y_name], split.lower()) if Y_name is not None else None,
+                transform=ContrastiveLearningViewGenerator(self._get_simclr_pipeline_transform(size=112)),
+                clip_length=self.args.clip_length if self.args.model == "vivit" else None)
         }
         
-        datasets_fn = valid_datasets[name]
+        datasets_fn = valid_datasets[dataset_name]
         return datasets_fn()

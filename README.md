@@ -27,82 +27,82 @@ This specifies the model architecture and the dataset root path. Below is a full
 
 ### Command-line arguments
 
--   `-a`, `--arch` (`ARCH`)
+- `-a`, `--arch` (`ARCH`)
 
     Model architecture to use. Must be one of the keys defined in `model_dict`.
 
     **Example:** `vit_b_16`
 
--   `-data` (`DIR`)
+- `-data` (`DIR`)
 
     Path to the dataset root directory.
 
     **Example:** `../datasets/EchoNet-Dynamic/`
 
--   `-dataset-name`
+- `-dataset-name`
 
     Name of the dataset. Used to select dataset-specific loading logic.
 
     **Choices:** `echonet-dynamic`, `cifar10`
     **Default:** `echonet-dynamic`
 
--   `--lr`, `--learning-rate` (`LR`)
+- `--lr`, `--learning-rate` (`LR`)
 
     Initial learning rate.
 
     **Default:** `0.0003`
 
--   `--wd`, `--weight-decay` (`W`)
+- `--wd`, `--weight-decay` (`W`)
 
     Weight decay (L2 regularization strength).
 
     **Default:** `1e-4`
 
--   `-b`, `--batch-size` (`N`)
+- `-b`, `--batch-size` (`N`)
 
     Mini-batch size. This is the **total batch size across all GPUs** when using Data Parallel or Distributed Data Parallel.
 
     **Default:** `256`
 
--   `--epochs` (`N`)
+- `--epochs` (`N`)
 
     Total number of training epochs.
 
     **Default:** `200`
 
--   `-j`, `--workers` (`N`)
+- `-j`, `--workers` (`N`)
 
     Number of data loading worker processes.
 
     **Default:** `12`
 
--   `--temperature`
+- `--temperature`
 
     Softmax temperature used in the contrastive loss.
 
     **Default:** `0.07`
 
--   `--log-every-n-steps`
+- `--log-every-n-steps`
 
     Log training metrics every _n_ steps.
 
     **Default:** `100`
 
--   `--gpu-index`
+- `--gpu-index`
 
     GPU index to use when CUDA is enabled.
 
     **Default:** `0`
 
--   `--disable-cuda`
+- `--disable-cuda`
 
     Disable CUDA and force CPU-only training.
 
--   `--fp16-precision`
+- `--fp16-precision`
 
     Enable mixed-precision (16-bit / FP16) training on GPU.
 
--   `--clip-length`
+- `--clip-length`
 
     Lets users decide clip length when training with ViViT.
 
@@ -118,3 +118,9 @@ python run.py \
   --temperature 0.1 \
   --fp16-precision
 ```
+
+files that need to be modified to add a new model
+
+format of the dataset (dict, train, test, val) in order to use other ones
+
+command to evaluate model
