@@ -1,14 +1,14 @@
 import argparse
 import logging
 from pathlib import Path
-import datetime
 
-import torch
 from accelerate import Accelerator
+import torch
 
 from models.model import get_model
 from cl_dataset import ContrastiveLearningDataset
 from simclr import SimCLR
+from utils import setup_logging
 
 parser = argparse.ArgumentParser(description='PyTorch SimCLR')
 
@@ -110,12 +110,6 @@ parser.add_argument(
     metavar='N',
     help='number of data loading workers (default: 12)'
 )
-parser.add_argument(
-    '--enable_hf_acceleration',
-    action='store_true',
-    help='enables acceleration for distributed training'
-)
-
 # -------------------------------------------------
 # Logging
 # -------------------------------------------------
@@ -125,7 +119,6 @@ parser.add_argument(
     type=int,
     help='log every n steps'
 )
-
 # -------------------------------------------------
 # Precision
 # -------------------------------------------------
@@ -134,16 +127,6 @@ parser.add_argument(
     action='store_true',
     help='use 16-bit (mixed) precision training'
 )
-
-
-def setup_logging(log_dir: Path):
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    logging.basicConfig(
-        filename=log_dir / "training-{date:%m-%d-%Y_%H:%M:%S}.log".format(date=datetime.datetime.now()),
-        level=logging.DEBUG,
-        filemode="w"
-    )
 
 def main():
     args = parser.parse_args()
@@ -160,7 +143,8 @@ def main():
         dataset_name=args.dataset_name,
         addl_args=args
     )
-    train_data = dataset.get_dataset_split(name=args.dataset_name, split="TRAIN")
+
+    train_data = dataset.get_dataset_split(dataset_name=args.dataset_name, split="TRAIN")
     train_loader = torch.utils.data.DataLoader(
         train_data, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True, drop_last=True
@@ -179,9 +163,15 @@ def main():
 
     logging.info(f"Starting training with {args.model} model.")
     
-    simclr_model = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, accelerator=accelerator, args=args)
+    simclr_model = SimCLR(
+        model=model, 
+        optimizer=optimizer, 
+        scheduler=scheduler, 
+        accelerator=accelerator, 
+        args=args
+    )
     # simclr_model.train(train_loader)
 
 if __name__ == "__main__":
-    setup_logging(Path("./logs"))
+    setup_logging(Path("./logs/pretraining"),)
     main()

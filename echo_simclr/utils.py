@@ -1,8 +1,9 @@
+import datetime
+import logging
 import os
-import shutil
 from pathlib import Path
+import shutil
 
-import numpy as np
 import torch
 import yaml
 
@@ -32,3 +33,12 @@ def accuracy(output, target, topk=(1,)):
             correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
+
+def setup_logging(log_dir: Path):
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    logging.basicConfig(
+        filename=log_dir / "training-{date:%m-%d-%Y_%H:%M:%S}.log".format(date=datetime.datetime.now()),
+        level=logging.DEBUG,
+        filemode="w"
+    )

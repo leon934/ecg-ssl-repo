@@ -34,7 +34,7 @@ class ViViTModel(nn.Module):
             )
 
     def forward(self, x) -> torch.Tensor:
-        out = self.backbone(x).last_hidden_state
-        cls = out[:, 0]
+        h = self.backbone(x).last_hidden_state[:, 0]
+        z = self.head(h)
 
-        return self.head(cls)
+        return z

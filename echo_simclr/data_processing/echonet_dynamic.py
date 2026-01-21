@@ -10,9 +10,9 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
 
     if dataset_path.exists():
         print(f"Found saved EchoNet-Dynamic dataset for {args.model} model. Skipping creating views.")
-        dataset_dict = np.load(dataset_path, mmap_mode="r", allow_pickle=True)
+        save_arr = np.load(dataset_path, mmap_mode="r", allow_pickle=True)
 
-        return dataset_dict
+        return save_arr
 
     video_name_df = pd.read_csv(root_folder / "FileList.csv",)
 
@@ -46,11 +46,11 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
 
     for split in ("TRAIN", "TEST", "VAL"):
         save_arr[f"X_{split}"] = np.array(dataset_dict[split], dtype=object)
-        save_arr[f"EF_{split}"] = np.array(ef_dict[split], dtype=object)
-        save_arr[f"ESV_{split}"] = np.array(es_dict[split], dtype=object)
-        save_arr[f"EDV_{split}"] = np.array(edv_dict[split], dtype=object)
+        save_arr[f"EF_{split}"] = np.array(ef_dict[split], dtype=np.float32)
+        save_arr[f"ESV_{split}"] = np.array(es_dict[split], dtype=np.float32)
+        save_arr[f"EDV_{split}"] = np.array(edv_dict[split], dtype=np.float32)
 
-    np.savez(dataset_path, **{k: np.array(v, dtype=object) for k, v in dataset_dict.items()})
+    np.savez(dataset_path, **save_arr)
     print(f"Finished saving EchoNet NumPy array for {args.model} model.")
 
-    return dataset_dict
+    return save_arr

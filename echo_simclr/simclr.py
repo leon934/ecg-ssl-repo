@@ -20,7 +20,8 @@ class SimCLR(object):
         self.args = args
 
         self.writer = SummaryWriter()
-        self.criterion = torch.nn.CrossEntropyLoss()
+        self.pretraining_criterion = torch.nn.CrossEntropyLoss()
+        self.finetuning_criterion = torch.nn.MSELoss()
 
         # self.device = self.accelerator.device
 
@@ -69,7 +70,7 @@ class SimCLR(object):
                     features = self.model(images)
                     logits, labels = self.info_nce_loss(features)
 
-                    loss = self.criterion(logits, labels)
+                    loss = self.pretraining_criterion(logits, labels)
 
                 self.accelerator.backward(loss)
 
@@ -93,7 +94,7 @@ class SimCLR(object):
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=date))
+            curr_model_path = Path("models/pretraining/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             checkpoint = {
@@ -110,7 +111,6 @@ class SimCLR(object):
 
             save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
-
             logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
 
         logging.info("Training finished.")
@@ -121,7 +121,72 @@ class SimCLR(object):
         val_loader: torch.utils.data.DataLoader, 
         test_loader: torch.utils.data.DataLoader
     ):  
-        for curr_epoch in range(self.args.epoch):
-            pass
-            # for images, _ 
-            #     pass
+        save_config_file(self.writer.log_dir, self.args)
+
+        logging.info(f"Starting fine-tuning for downstream task: {self.args.y_name} prediction.")
+
+        date = datetime.datetime.now()
+        n_iter = 0
+
+        for curr_epoch in range(self.args.epochs):
+            self.model.train()
+            for image, label in train_loader:
+                with self.accelerator.autocast():
+                    pred = self.model(image).squeeze(-1)
+                    loss = self.finetuning_criterion(pred, label)
+
+                self.accelerator.backward(loss)
+
+                self.optimizer.zero_grad()
+                self.optimizer.step()
+
+                if n_iter % self.args.log_every_n_steps == 0:
+                    avg_loss = self.accelerator.gather(loss).mean()
+
+                    self.writer.add_scalar('loss', avg_loss, global_step=n_iter)
+                    self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
+                
+                n_iter += 1
+
+            if curr_epoch >= 10:
+                self.scheduler.step()
+
+            # save model checkpoints
+            checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
+            curr_model_path = Path("models/finetuning/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=date))
+            curr_model_path.mkdir(parents=True, exist_ok=True)
+            
+            checkpoint = {
+                'epoch': self.args.epochs,
+                'model': self.args.model,
+                'state_dict': self.model.state_dict(),
+                'optimizer': self.optimizer.state_dict(),
+            }
+
+            # applicable to hf architectures
+            # todo: create model class for simclr to req. self.backbone, self.head, and self.config so we don't need to have this safe guard
+            if hasattr(self.model.backbone, "config"):
+                checkpoint["config"] = self.model.backbone.config.to_dict()
+
+            save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
+            logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
+
+            self.model.eval()
+            val_loss = 0.0
+
+            with torch.no_grad():
+                for image, label in val_loader:
+                    pred = self.model(image).squeeze(-1)
+                    val_loss += self.finetuning_criterion(pred, label)
+
+            val_loss /= len(val_loader)
+
+        self.model.train()
+        test_loss = 0.0
+
+        for image, label in test_loader:
+            pred = self.model(image).squeeze(-1)
+            test_loss += self.finetuning_criterion(pred, label)
+
+        logging.info(f"Final testing loss: {test_loss}")
+        logging.info("Fine-tuning finished.")

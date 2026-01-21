@@ -1,19 +1,22 @@
 import argparse
+from pathlib import Path
 
+from accelerate import Accelerator
 import torch
 
 from cl_dataset import ContrastiveLearningDataset
 from models.vit.model import ViTModel
 from models.vivit.model import ViViTModel
 from simclr import SimCLR
+from utils import setup_logging
 
 parser = argparse.ArgumentParser(description='PyTorch SimCLR evaluation pipeline')
 
 # -------------------------------------------------
-# Training
+# Finetuning
 # -------------------------------------------------
 parser.add_argument(
-    '-m', '--model-path',
+    '-mp', '--model-path',
     metavar="MODEL_PATH",
     required=True,
     help='path to .pth model file'
@@ -32,17 +35,24 @@ parser.add_argument(
     metavar='N',
     help='mini-batch size (default: 256); total batch size across all GPUs'
 )
+parser.add_argument(
+    '-y', '--y-name',
+    metavar='y_name',
+    required=True,
+    choices=["EF", "EDV", "ESV"],
+    help='target variable, choices are EF, EDV, and ESV'
+)
 # -------------------------------------------------
 # Dataset
 # -------------------------------------------------
 parser.add_argument(
-    '-data',
+    '--data',
     metavar='DIR',
     help='path to dataset root folder',
     required=True
 )
 parser.add_argument(
-    '-dataset-name',
+    '--dataset-name',
     default='echonet-dynamic',
     choices=['echonet-dynamic'],
     help='dataset name'
@@ -76,6 +86,23 @@ parser.add_argument(
     metavar='N',
     help='number of data loading workers (default: 12)'
 )
+# -------------------------------------------------
+# Logging
+# -------------------------------------------------
+parser.add_argument(
+    '--log-every-n-steps',
+    default=100,
+    type=int,
+    help='log every n steps'
+)
+# -------------------------------------------------
+# Precision
+# -------------------------------------------------
+parser.add_argument(
+    '--fp16-precision',
+    action='store_true',
+    help='use 16-bit (mixed) precision training'
+)
 
 def main():
     args = parser.parse_args()
@@ -87,16 +114,16 @@ def main():
     )
 
     model_data = torch.load(args.model_path, map_location=args.device)
-    model_type, model_state_dict = model_data["model"], model_data["state_dict"]
+    args.model, model_state_dict = model_data["model"], model_data["state_dict"]
 
     dataset = ContrastiveLearningDataset(
         root_folder=args.data,
-        model_type=model_type,
+        model_type=args.model,
         dataset_name=args.dataset_name,
         addl_args=args
     )
     dataloader_dict = {f"{split.lower()}_loader": torch.utils.data.DataLoader(
-        dataset.get_dataset_split(args.dataset_name, split)
+        dataset.get_dataset_split(args.dataset_name, split, Y_name=args.y_name)
     ) for split in ("TRAIN", "TEST", "VAL")}
 
     # gets backbone w/o projection head
@@ -116,7 +143,7 @@ def main():
         )
     }
 
-    ModelClass, addl_model_args = curr_model_params[model_type]
+    ModelClass, addl_model_args = curr_model_params[args.model]
     # strict=False bcos we now have new randomly initialized head attached to model
     model = ModelClass(
         image_size=112,
@@ -127,17 +154,19 @@ def main():
     model.load_state_dict(model_state_dict, strict=False)
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr)
+    accelerator = Accelerator(mixed_precision="fp16") if args.fp16_precision and args.device != "cpu" else Accelerator()
 
     # no scheduler/weight decay mentioned in simclr paper for ft
     simclr_model = SimCLR(
         model=model, 
         optimizer=optimizer,
         scheduler=None,
-        accelerator=None,
+        accelerator=accelerator,
         args=args
     )
 
     simclr_model.finetune(**dataloader_dict)
 
 if __name__ == "__main__":
+    setup_logging(Path("./logs/finetuning"))
     main()
