@@ -11,11 +11,15 @@ class ViTModel(nn.Module):
 
         config = ViTConfig(
             image_size=image_size,
-            num_channels=channels
+            num_channels=channels,
+            add_pooling_layer=False
         )
 
         self.backbone = VitModel(config)
-        self.backbone.classifier = nn.Identity()
+
+        if hasattr(self.backbone, 'pooler') and self.backbone.pooler is not None:
+            del self.backbone.pooler
+            self.backbone.pooler = None
 
         # add mlp head to vit
         dim_mlp = config.hidden_size

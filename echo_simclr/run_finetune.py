@@ -107,13 +107,11 @@ parser.add_argument(
 def main():
     args = parser.parse_args()
 
-    args.device = (
-        f"cuda:{args.gpu_index}"
-        if torch.cuda.is_available() and args.gpu_index is not None and args.gpu_index >= 0
-        else "cpu"
+    accelerator = Accelerator(
+        mixed_precision="fp16" if args.fp16_precision else "no"
     )
 
-    model_data = torch.load(args.model_path, map_location=args.device)
+    model_data = torch.load(args.model_path, map_location="cpu")
     args.model, model_state_dict = model_data["model"], model_data["state_dict"]
 
     dataset = ContrastiveLearningDataset(
@@ -154,7 +152,6 @@ def main():
     model.load_state_dict(model_state_dict, strict=False)
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr)
-    accelerator = Accelerator(mixed_precision="fp16") if args.fp16_precision and args.device != "cpu" else Accelerator()
 
     # no scheduler/weight decay mentioned in simclr paper for ft
     simclr_model = SimCLR(
@@ -164,7 +161,6 @@ def main():
         accelerator=accelerator,
         args=args
     )
-
     simclr_model.finetune(**dataloader_dict)
 
 if __name__ == "__main__":

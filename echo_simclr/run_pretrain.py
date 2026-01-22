@@ -27,13 +27,13 @@ parser.add_argument(
 # Dataset
 # -------------------------------------------------
 parser.add_argument(
-    '-data',
+    '--data',
     metavar='DIR',
     help='path to dataset directory',
     required=True
 )
 parser.add_argument(
-    '-dataset-name',
+    '--dataset-name',
     default='echonet-dynamic',
     choices=['echonet-dynamic'],
     help='dataset name'
@@ -98,12 +98,6 @@ parser.add_argument(
     help='disable CUDA'
 )
 parser.add_argument(
-    '--gpu-index',
-    default=0,
-    type=int,
-    help='GPU index to use (default: 0)'
-)
-parser.add_argument(
     '-j', '--workers',
     default=12,
     type=int,
@@ -131,10 +125,9 @@ parser.add_argument(
 def main():
     args = parser.parse_args()
 
-    args.device = (
-        f"cuda:{args.gpu_index}"
-        if torch.cuda.is_available() and args.gpu_index is not None and args.gpu_index >= 0
-        else "cpu"
+    # moves to gpu if possible when fp16 flag enabled
+    accelerator = Accelerator(
+        mixed_precision="fp16" if args.fp16_precision else "no"
     )
 
     dataset = ContrastiveLearningDataset(
@@ -155,9 +148,6 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 
                                                            last_epoch=-1)
-    
-    # moves to gpu if possible when fp16 flag enabled
-    accelerator = Accelerator(mixed_precision="fp16") if args.fp16_precision and args.device != "cpu" else Accelerator()
 
     model, optimizer, train_loader, scheduler = accelerator.prepare(model, optimizer, train_loader, scheduler)
 
@@ -170,7 +160,7 @@ def main():
         accelerator=accelerator, 
         args=args
     )
-    # simclr_model.train(train_loader)
+    simclr_model.train(train_loader)
 
 if __name__ == "__main__":
     setup_logging(Path("./logs/pretraining"),)

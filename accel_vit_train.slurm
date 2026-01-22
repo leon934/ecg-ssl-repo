@@ -2,12 +2,12 @@
 
 ##NECESSARY JOB SPECIFICATIONS
 #SBATCH --time=15:00:00
-#SBATCH --mem=80G
+#SBATCH --mem=128G
 #SBATCH --output=./jobs/%j_%x_output
+#SBATCH --nodes=1   
 #SBATCH --ntasks=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=6
-#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gres=gpu:t4:4
 #SBATCH --partition=gpu
 
 #First Executable Line
@@ -15,18 +15,20 @@ source ~/.bashrc
 source .venv/bin/activate
 
 data_path=./datasets/EchoNet-Dynamic/
-batch_size=64
+model=vit
+batch_size=12
 num_epochs=200
-model=vivit
-clip_length=16
+num_workers=2
 
-python echo_simclr/run_pretraining.py \
+accelerate launch \
+    --num_processes=4 \
+    --mixed_precision=fp16 \
+    --num_machines=1 \
+    --dynamo_backend=no \
+    echo_simclr/run_pretrain.py \
 	--model ${model} \
 	--data ${data_path} \
-    --dataset-name ${dataset_name} \
 	--batch-size ${batch_size} \
 	--epochs ${num_epochs} \
-	--gpu-index 0 \
-	--workers 6 \
-	--fp16-precision \
-	--clip-length ${clip_length}
+	--workers ${num_workers} \
+	--fp16-precision

@@ -23,7 +23,7 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
 
     # iterate through each .avi file
     for row in tqdm(video_name_df.itertuples(), total=len(video_name_df)):
-        obj = av.open(root_folder / "videos" / (row.FileName + ".avi"))
+        obj = av.open(root_folder / "Videos" / (row.FileName + ".avi"))
         curr_split = row.Split
 
         video_arr = np.expand_dims(np.stack([frame.to_ndarray(format="gray") for frame in obj.decode(video=0)]), axis=1)
