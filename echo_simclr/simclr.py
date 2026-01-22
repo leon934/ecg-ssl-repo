@@ -152,8 +152,7 @@ class SimCLR(object):
             if hasattr(model_to_save, "config"):
                 checkpoint["config"] = model_to_save.backbone.config.to_dict()
 
-            if self.accelerator.is_main_process:
-                save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
+            self.accelerator.save(obj=checkpoint, f=curr_model_path / checkpoint_name)
     
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
             logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
@@ -216,7 +215,7 @@ class SimCLR(object):
             if hasattr(model_to_save, "config"):
                 checkpoint["config"] = model_to_save.backbone.config.to_dict()
 
-            accelerator.save(obj=checkpoint, f=curr_model_path / checkpoint_name)
+            self.accelerator.save(obj=checkpoint, f=curr_model_path / checkpoint_name)
             # save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 

@@ -7,7 +7,7 @@
 #SBATCH --nodes=1   
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:t4:4
+#SBATCH --gres=gpu:a100:2
 #SBATCH --partition=gpu
 
 #First Executable Line
@@ -16,12 +16,12 @@ source .venv/bin/activate
 
 data_path=./datasets/EchoNet-Dynamic/
 model=vit
-batch_size=12
+batch_size=64
 num_epochs=200
-num_workers=2
+num_workers=4
 
 accelerate launch \
-    --num_processes=4 \
+    --num_processes=2 \
     --mixed_precision=fp16 \
     --num_machines=1 \
     --dynamo_backend=no \
