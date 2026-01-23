@@ -30,43 +30,19 @@ class SimCLR(object):
         features = torch.distributed.nn.functional.all_gather(features)
         features = torch.cat(features, dim=0)
 
-        total_size = features.shape[0]  
-        # We assume 'features' input was [View1, View2] stacked locally
-        # So the local chunk size is total_size / num_processes
-        # But simpler: we know every even chunk is V1, odd chunk is V2.
-        
-        # Reshape to (Num_GPUs, 2_Views, Local_Batch, Dim)
-        # Note: This assumes your local batch size is constant. 
-        # A safer way without assuming constant local batch is simply sorting if you track indices, 
-        # but for standard DDP this reshape works:
-        
+        total_size = features.shape[0]
         n_views = 2
-        # This recovers the global batch size (e.g., 48 if local is 12 and gpus=4)
-        global_batch_size = features.shape[0] // n_views 
+        global_batch_size = total_size // n_views
         
-        # Reshape: [Global_Batch*2, Dim] -> [2, Global_Batch, Dim]
-        # We have to be careful. The gather order is Process0, Process1, Process2...
-        # Process0 has [v1_0..v1_n, v2_0..v2_n].
-        # We want to pull all v1s together.
-        
-        # Reshape to [Num_Processes, 2, Local_Batch, Dim]
+        # reshape to [num_procs, 2, local_batch_size, Dim]
         num_processes = self.accelerator.num_processes
         local_batch = global_batch_size // num_processes
         
-        features = features.view(num_processes, 2, local_batch, -1) 
-        
-        # Permute to [2, Num_Processes, Local_Batch, Dim] to group views
+        features = features.view(num_processes, n_views, local_batch, -1) 
         features = features.permute(1, 0, 2, 3)
-        
-        # Flatten back to [2 * Global_Batch, Dim]
-        # Now it looks like [All_View1s, All_View2s]
         features = features.reshape(2 * global_batch_size, -1)
-        # --- FIX END ---
 
-        # 2. Update the variable usage (Use calculated global_batch_size)
         batch_size = global_batch_size
-
-        batch_size = features.shape[0] // 2
 
         labels = torch.cat([torch.arange(batch_size) for _ in range(2)], dim=0)
         labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
@@ -115,6 +91,16 @@ class SimCLR(object):
                 self.optimizer.zero_grad()
                 self.accelerator.backward(loss)
                 self.optimizer.step()
+
+                model_to_save = self.model.module if hasattr(self.model, "module") else self.model
+
+                for name, param in model_to_save.named_parameters():
+                    if param.grad is not None:
+                        print(f"Gradient flowing to {name}, norm: {param.grad.norm()}")
+                        break
+                    else:
+                        print(f"NO GRADIENT at {name}")
+                        break
 
                 if n_iter % self.args.log_every_n_steps == 0:
                     top1, top5 = accuracy(logits, labels, topk=(1, 5))
