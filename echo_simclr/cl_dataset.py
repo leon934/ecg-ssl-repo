@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torchvision.transforms import v2
+from torchvision import tv_tensors
 
 from data_processing.echonet_dynamic import echonet_dataset
 
@@ -82,10 +83,11 @@ class VideoDataset(Dataset):
         clip_start_idx = random.randint(0, end_idx)
 
         curr_clip = torch.from_numpy(curr_video[clip_start_idx : clip_start_idx + self.clip_length])
+        curr_clip = tv_tensors.Video(curr_clip)
 
         # unnecessary computation when pretraining, so we js store target_arr as None]
         X_val = self.transform(curr_clip) if self.transform is not None else curr_clip
-        Y_val = None if self.target_array is None else self.target_array[index]
+        Y_val = 0 if self.target_array is None else self.target_array[index]
         
         return X_val, Y_val
 

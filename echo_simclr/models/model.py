@@ -20,11 +20,12 @@ model_dict = {
     "vivit": ViViTModel
 }
 
-def get_model(model_name: str, dataset_name: str, clip_length: int) -> Union[ViTModel, ViViTModel]:
+def get_model(model_name: str, dataset_name: str, clip_length: int, finetune_mode: bool) -> Union[ViTModel, ViViTModel]:
     model = model_dict[model_name](
         image_size=valid_datasets[dataset_name].image_size,
         channels=valid_datasets[dataset_name].channels,
-        clip_length=clip_length
+        clip_length=clip_length,
+        finetune_mode=finetune_mode
     )
 
     return model

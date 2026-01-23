@@ -22,7 +22,7 @@ class SimCLR(object):
             # accelerator: Accelerator,
             args
         ):
-        self.model = model.to(self.args.device)
+        self.model = model.to(args.device)
         self.optimizer = optimizer
         self.scheduler = scheduler
         # self.accelerator = accelerator
@@ -100,7 +100,7 @@ class SimCLR(object):
                     features = self.model(images)
                     logits, labels = self.info_nce_loss(features)
 
-                    loss = self.criterion(logits, labels)
+                    loss = self.pretraining_criterion(logits, labels)
 
                 self.optimizer.zero_grad()
                 scaler.scale(loss).backward()
@@ -127,7 +127,7 @@ class SimCLR(object):
             
             save_checkpoint({
                 'epoch': self.args.epochs,
-                'arch': self.args.arch,
+                'model': self.args.model,
                 'state_dict': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
             }, is_best=False, filename=curr_model_path / checkpoint_name)
@@ -148,31 +148,34 @@ class SimCLR(object):
 
         logging.info(f"Starting fine-tuning for downstream task: {self.args.y_name} prediction.")
 
+        scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
+
         date = datetime.datetime.now()
         n_iter = 0
 
         for curr_epoch in range(self.args.epochs):
             self.model.train()
             for image, label in train_loader:
-                with self.accelerator.autocast():
+                image = image.to(self.args.device)
+                label = label.to(self.args.device)
+
+                with autocast(device_type=self.args.device, enabled=self.args.fp16_precision):
+                # with self.accelerator.autocast():
                     pred = self.model(image).squeeze(-1)
                     loss = self.finetuning_criterion(pred, label)
 
-                self.accelerator.backward(loss)
-
                 self.optimizer.zero_grad()
-                self.optimizer.step()
+                scaler.scale(loss).backward()
+                scaler.step(self.optimizer)
+                scaler.update()
 
-                if n_iter % self.args.log_every_n_steps == 0:
-                    avg_loss = self.accelerator.gather(loss).mean()
+                # if n_iter % self.args.log_every_n_steps == 0:
+                #     avg_loss = self.accelerator.gather(loss).mean()
 
-                    self.writer.add_scalar('loss', avg_loss, global_step=n_iter)
-                    self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
+                #     self.writer.add_scalar('loss', avg_loss, global_step=n_iter)
+                #     self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
                 
                 n_iter += 1
-
-            if curr_epoch >= 10:
-                self.scheduler.step()
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
@@ -194,7 +197,12 @@ class SimCLR(object):
             if hasattr(model_to_save, "config"):
                 checkpoint["config"] = model_to_save.backbone.config.to_dict()
 
-            self.accelerator.save(obj=checkpoint, f=curr_model_path / checkpoint_name)
+            save_checkpoint({
+                'epoch': self.args.epochs,
+                'model': self.args.model,
+                'state_dict': self.model.state_dict(),
+                'optimizer': self.optimizer.state_dict(),
+            }, is_best=False, filename=curr_model_path / checkpoint_name)
             # save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
@@ -203,15 +211,21 @@ class SimCLR(object):
 
             with torch.no_grad():
                 for image, label in val_loader:
+                    image = image.to(self.args.device)
+                    label = label.to(self.args.device)
+
                     pred = self.model(image).squeeze(-1)
                     val_loss += self.finetuning_criterion(pred, label)
 
             val_loss /= len(val_loader)
+            logging.info(f"Validation loss for epoch {curr_epoch}: {val_loss}")
 
-        self.model.train()
         test_loss = 0.0
 
         for image, label in test_loader:
+            image = image.to(self.args.device)
+            label = label.to(self.args.device)
+
             pred = self.model(image).squeeze(-1)
             test_loss += self.finetuning_criterion(pred, label)
 

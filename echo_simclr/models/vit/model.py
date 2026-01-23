@@ -6,7 +6,7 @@ from transformers import ViTModel as VitModel, ViTConfig
 
 class ViTModel(nn.Module):
     # "overloading" init with clip_length to make code generalizable to clip-based encoders (e.g. ViViT)
-    def __init__(self, image_size: int, channels: int, eval_mode: bool=False, **kwargs):
+    def __init__(self, image_size: int, channels: int, finetune_mode: bool, **kwargs):
         super(ViTModel, self).__init__()
 
         config = ViTConfig(
@@ -25,7 +25,7 @@ class ViTModel(nn.Module):
         dim_mlp = config.hidden_size
         OUTPUT_DIM = 256
         
-        if eval_mode:
+        if finetune_mode:
             for param in self.backbone.parameters():
                 param.requires_grad = False
 

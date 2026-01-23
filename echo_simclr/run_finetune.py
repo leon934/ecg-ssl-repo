@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from accelerate import Accelerator
+# from accelerate import Accelerator
 import torch
 
 from cl_dataset import ContrastiveLearningDataset
@@ -107,9 +107,11 @@ parser.add_argument(
 def main():
     args = parser.parse_args()
 
-    accelerator = Accelerator(
-        mixed_precision="fp16" if args.fp16_precision else "no"
-    )
+    # accelerator = Accelerator(
+    #     mixed_precision="fp16" if args.fp16_precision else "no"
+    # )
+
+    args.device = "cuda"
 
     model_data = torch.load(args.model_path, map_location="cpu")
     args.model, model_state_dict = model_data["model"], model_data["state_dict"]
@@ -121,7 +123,12 @@ def main():
         addl_args=args
     )
     dataloader_dict = {f"{split.lower()}_loader": torch.utils.data.DataLoader(
-        dataset.get_dataset_split(args.dataset_name, split, Y_name=args.y_name)
+        dataset.get_dataset_split(args.dataset_name, split, Y_name=args.y_name),
+        batch_size=args.batch_size,
+        shuffle=(split == "TRAIN"),
+        num_workers=args.workers,
+        pin_memory=True,
+        drop_last=(split == "TRAIN")
     ) for split in ("TRAIN", "TEST", "VAL")}
 
     # gets backbone w/o projection head
@@ -146,10 +153,12 @@ def main():
     model = ModelClass(
         image_size=112,
         channels=1,
-        eval_mode=True,
+        finetune_mode=True,
         **{param: arg() for param, arg in addl_model_args.items()}
     )
     model.load_state_dict(model_state_dict, strict=False)
+    model = model.float()
+    model = model.to(args.device)
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr)
 
@@ -158,7 +167,7 @@ def main():
         model=model, 
         optimizer=optimizer,
         scheduler=None,
-        accelerator=accelerator,
+        # accelerator=accelerator,
         args=args
     )
     simclr_model.finetune(**dataloader_dict)

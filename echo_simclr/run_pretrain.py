@@ -130,11 +130,7 @@ def main():
     #     mixed_precision="fp16" if args.fp16_precision else "no"
     # )
 
-    args.device = (
-        f"cuda:{args.gpu_index}"
-        if torch.cuda.is_available() and args.gpu_index is not None and args.gpu_index >= 0
-        else "cpu"
-    )
+    args.device = "cuda"
 
     dataset = ContrastiveLearningDataset(
         root_folder=args.data,
@@ -149,7 +145,12 @@ def main():
         num_workers=args.workers, pin_memory=True, drop_last=True
     )
 
-    model = get_model(model_name=args.model, dataset_name=args.dataset_name, clip_length=args.clip_length)
+    model = get_model(
+        model_name=args.model,
+        dataset_name=args.dataset_name,
+        clip_length=args.clip_length,
+        finetune_mode=False
+    )
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 

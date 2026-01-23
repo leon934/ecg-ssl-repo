@@ -4,7 +4,7 @@ import torch
 from transformers import VivitModel, VivitConfig
 
 class ViViTModel(nn.Module):
-    def __init__(self, image_size: int, channels: int, eval_mode: bool=False, **kwargs):
+    def __init__(self, image_size: int, channels: int, finetune_mode: bool, **kwargs):
         super(ViViTModel, self).__init__()
 
         clip_length = kwargs["clip_length"]
@@ -20,7 +20,7 @@ class ViViTModel(nn.Module):
         dim_mlp = self.backbone.config.hidden_size
         OUTPUT_DIM = 256
 
-        if not eval_mode:
+        if finetune_mode:
             for param in self.backbone.parameters():
                 param.requires_grad = False
 

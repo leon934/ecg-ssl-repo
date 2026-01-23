@@ -16,16 +16,11 @@ source .venv/bin/activate
 
 data_path=./datasets/EchoNet-Dynamic/
 model=vit
-batch_size=128
-num_epochs=200
+batch_size=768
+num_epochs=500
 num_workers=8
 
-accelerate launch \
-    --num_processes=1 \
-    --mixed_precision=fp16 \
-    --num_machines=1 \
-    --dynamo_backend=no \
-    echo_simclr/run_pretrain.py \
+python echo_simclr/run_pretrain.py \
 	--model ${model} \
 	--data ${data_path} \
 	--batch-size ${batch_size} \
