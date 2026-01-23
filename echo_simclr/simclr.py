@@ -3,48 +3,57 @@ import datetime
 from pathlib import Path
 
 import torch
-import torch.distributed.nn.functional as dist_nn
+# import torch.distributed.nn.functional as dist_nn
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
-from accelerate import Accelerator
+# from accelerate import Accelerator
+from torch.amp import GradScaler, autocast
 
-from utils import accuracy, save_config_file
+from utils import accuracy, save_config_file, save_checkpoint
 
 torch.manual_seed(0)
 
 class SimCLR(object):
-    def __init__(self, model, optimizer, scheduler, accelerator: Accelerator, args):
-        self.model = model
+    def __init__(
+            self, 
+            model, 
+            optimizer,
+            scheduler,
+            # accelerator: Accelerator,
+            args
+        ):
+        self.model = model.to(self.args.device)
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.accelerator = accelerator
+        # self.accelerator = accelerator
         self.args = args
 
         self.writer = SummaryWriter()
         self.pretraining_criterion = torch.nn.CrossEntropyLoss()
         self.finetuning_criterion = torch.nn.MSELoss()
 
-        self.device = self.accelerator.device
+        # self.device = self.accelerator.device
+        self.device = self.args.device
 
     def info_nce_loss(self, features):
-        features = torch.distributed.nn.functional.all_gather(features)
-        features = torch.cat(features, dim=0)
+        # features = torch.distributed.nn.functional.all_gather(features)
+        # features = torch.cat(features, dim=0)
 
-        total_size = features.shape[0]
-        n_views = 2
-        global_batch_size = total_size // n_views
+        # total_size = features.shape[0]
+        # n_views = 2
+        # global_batch_size = total_size // n_views
         
-        # reshape to [num_procs, 2, local_batch_size, Dim]
-        num_processes = self.accelerator.num_processes
-        local_batch = global_batch_size // num_processes
+        # # reshape to [num_procs, 2, local_batch_size, Dim]
+        # num_processes = self.accelerator.num_processes
+        # local_batch = global_batch_size // num_processes
         
-        features = features.view(num_processes, n_views, local_batch, -1) 
-        features = features.permute(1, 0, 2, 3)
-        features = features.reshape(2 * global_batch_size, -1)
+        # features = features.view(num_processes, n_views, local_batch, -1) 
+        # features = features.permute(1, 0, 2, 3)
+        # features = features.reshape(2 * global_batch_size, -1)
 
-        batch_size = global_batch_size
+        # batch_size = global_batch_size
 
-        labels = torch.cat([torch.arange(batch_size) for _ in range(2)], dim=0)
+        labels = torch.cat([torch.arange(self.args.batch_size) for _ in range(2)], dim=0)
         labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
         labels = labels.to(self.device)
 
@@ -70,48 +79,41 @@ class SimCLR(object):
         logits = logits / self.args.temperature
         return logits, labels
 
-    def train(self, train_loader: torch.utils.data.DataLoader) -> None:
+    def train(self, train_loader):
         save_config_file(self.writer.log_dir, self.args)
 
         n_iter = 0
         logging.info(f"Start SimCLR training for {self.args.epochs} epochs with {self.args.dataset_name} dataset.")
+        logging.info(f"Using device: {self.args.device}.")
+        logging.info(f"Model parameter device: {next(self.model.parameters()).device}")
+        logging.info(f"CUDA disabled: {self.args.disable_cuda}.")
 
         date = datetime.datetime.now()
 
+        scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
+
         for curr_epoch in range(self.args.epochs):
             for images, _ in train_loader:
-                images = torch.cat(images, dim=0)
+                images = torch.cat(images, dim=0).to(self.args.device)
 
-                with self.accelerator.autocast():
+                with autocast(device_type=self.args.device, enabled=self.args.fp16_precision):
                     features = self.model(images)
                     logits, labels = self.info_nce_loss(features)
 
-                    loss = self.pretraining_criterion(logits, labels)
+                    loss = self.criterion(logits, labels)
 
                 self.optimizer.zero_grad()
-                self.accelerator.backward(loss)
-                self.optimizer.step()
-
-                model_to_save = self.model.module if hasattr(self.model, "module") else self.model
-
-                for name, param in model_to_save.named_parameters():
-                    if param.grad is not None:
-                        print(f"Gradient flowing to {name}, norm: {param.grad.norm()}")
-                        break
-                    else:
-                        print(f"NO GRADIENT at {name}")
-                        break
+                scaler.scale(loss).backward()
+                scaler.step(self.optimizer)
+                scaler.update()
 
                 if n_iter % self.args.log_every_n_steps == 0:
                     top1, top5 = accuracy(logits, labels, topk=(1, 5))
 
-                    avg_loss = self.accelerator.gather(loss).mean()
-                    
-                    if self.accelerator.is_main_process:
-                        self.writer.add_scalar('loss', avg_loss, global_step=n_iter)
-                        self.writer.add_scalar('acc/top1', top1[0], global_step=n_iter)
-                        self.writer.add_scalar('acc/top5', top5[0], global_step=n_iter)
-                        self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
+                    self.writer.add_scalar('loss', loss, global_step=n_iter)
+                    self.writer.add_scalar('acc/top1', top1[0], global_step=n_iter)
+                    self.writer.add_scalar('acc/top5', top5[0], global_step=n_iter)
+                    self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
                 
                 n_iter += 1
 
@@ -120,28 +122,19 @@ class SimCLR(object):
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/pretraining/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=date))
+            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
-            # accelerate wraps in distributeddataparallel class so we have to access the module first
-            model_to_save = self.model.module if hasattr(self.model, "module") else self.model
-            
-            checkpoint = {
+            save_checkpoint({
                 'epoch': self.args.epochs,
-                'model': self.args.model,
-                'state_dict': model_to_save.state_dict(),
+                'arch': self.args.arch,
+                'state_dict': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
-            }
-
-            # applicable to hf architectures
-            # todo: create model class for simclr to req. self.backbone, self.head, and self.config so we don't need to have this safe guard
-            if hasattr(model_to_save, "config"):
-                checkpoint["config"] = model_to_save.backbone.config.to_dict()
-
-            self.accelerator.save(obj=checkpoint, f=curr_model_path / checkpoint_name)
-    
+            }, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
-            logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
+
+            # logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
+            logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}")
 
         logging.info("Training finished.")
 

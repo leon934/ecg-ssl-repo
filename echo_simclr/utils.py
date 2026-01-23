@@ -37,3 +37,8 @@ def setup_logging(log_dir: Path):
         level=logging.DEBUG,
         filemode="w"
     )
+
+def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+    torch.save(state, filename)
+    if is_best:
+        shutil.copyfile(filename, 'model_best.pth.tar')
