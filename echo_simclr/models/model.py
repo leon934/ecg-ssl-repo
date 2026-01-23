@@ -3,6 +3,7 @@ from typing import Union
 
 from models.vit.model import ViTModel
 from models.vivit.model import ViViTModel
+from models.resnet50.model import ResNetModel
 
 @dataclass(frozen=True)
 class DatasetSpec:
@@ -17,7 +18,8 @@ valid_datasets = {
     
 model_dict = {
     "vit": ViTModel,
-    "vivit": ViViTModel
+    "vivit": ViViTModel,
+    "resnet50": ResNetModel
 }
 
 def get_model(model_name: str, dataset_name: str, clip_length: int, finetune_mode: bool) -> Union[ViTModel, ViViTModel]:

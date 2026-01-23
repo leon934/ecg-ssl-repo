@@ -100,7 +100,8 @@ class ContrastiveLearningDataset:
 
     _DatasetClass_dict = {
         "vit": FrameDataset,
-        "vivit": VideoDataset
+        "vivit": VideoDataset,
+        "resnet50": FrameDataset
     }
     # to add to available datasets, we follow arg convention of (root_folder, args)
     _dataset_dict = {

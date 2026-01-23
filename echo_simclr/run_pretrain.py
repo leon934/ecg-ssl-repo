@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(description='PyTorch SimCLR')
 parser.add_argument(
     '-m', '--model',
     metavar="MODEL",
-    choices=["vit", "vivit"],
+    choices=["vit", "vivit", "resnet50"],
     help='available models: vivit and vit',
     required=True
 )
@@ -167,7 +167,7 @@ def main():
         # accelerator=accelerator, 
         args=args
     )
-    simclr_model.train(train_loader)
+    # simclr_model.train(train_loader)
 
 if __name__ == "__main__":
     setup_logging(Path("./logs/pretraining"),)

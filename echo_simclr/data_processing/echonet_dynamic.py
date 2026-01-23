@@ -28,7 +28,7 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
 
         video_arr = np.expand_dims(np.stack([frame.to_ndarray(format="gray") for frame in obj.decode(video=0)]), axis=1)
         
-        if args.model == "vit": 
+        if args.model == "vit" or args.model == "resnet50": 
             dataset_dict[curr_split].append(video_arr)
 
             ef_dict[curr_split].append(row.EF)
