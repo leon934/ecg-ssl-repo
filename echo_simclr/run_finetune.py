@@ -95,6 +95,18 @@ parser.add_argument(
     type=int,
     help='log every n steps'
 )
+parser.add_argument(
+    '--save-every-n',
+    default=1,
+    type=int,
+    help='saves the model every n epochs'
+)
+parser.add_argument(
+    '--save-last-n',
+    default=10,
+    type=int,
+    help='saves the model for the last n epochs'
+)
 # todo: no longer necessary w/ accelerate since it can be passed in thru cli args w/ accelerate
 # -------------------------------------------------
 # Precision
