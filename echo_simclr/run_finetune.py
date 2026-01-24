@@ -95,6 +95,7 @@ parser.add_argument(
     type=int,
     help='log every n steps'
 )
+# todo: no longer necessary w/ accelerate since it can be passed in thru cli args w/ accelerate
 # -------------------------------------------------
 # Precision
 # -------------------------------------------------
@@ -112,6 +113,7 @@ def main():
     # )
 
     args.device = "cuda"
+    args.date = datetime.datetime.now()
 
     model_data = torch.load(args.model_path, map_location="cpu")
     args.model, model_state_dict = model_data["model"], model_data["state_dict"]
@@ -157,8 +159,7 @@ def main():
         **{param: arg() for param, arg in addl_model_args.items()}
     )
     model.load_state_dict(model_state_dict, strict=False)
-    model = model.float()
-    model = model.to(args.device)
+    model = model.float().to(args.device)
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr)
 

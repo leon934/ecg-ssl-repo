@@ -28,7 +28,7 @@ class ResNetModel(nn.Module):
                 nn.Linear(dim_mlp, OUTPUT_DIM)
             )
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        h = self.backbone(x).pooler_output
+        h = torch.flatten(self.backbone(x).pooler_output, 1)
         z = self.head(h)
 
         return z

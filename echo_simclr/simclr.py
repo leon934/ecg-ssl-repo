@@ -84,11 +84,6 @@ class SimCLR(object):
 
         n_iter = 0
         logging.info(f"Start SimCLR training for {self.args.epochs} epochs with {self.args.dataset_name} dataset.")
-        logging.info(f"Using device: {self.args.device}.")
-        logging.info(f"Model parameter device: {next(self.model.parameters()).device}")
-        logging.info(f"CUDA disabled: {self.args.disable_cuda}.")
-
-        date = datetime.datetime.now()
 
         scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
 
@@ -122,15 +117,25 @@ class SimCLR(object):
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=date))
+            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
-            save_checkpoint({
+            # model_to_save = self.model.module if hasattr(self.model, "module") else self.model
+
+            checkpoint = {
                 'epoch': self.args.epochs,
                 'model': self.args.model,
                 'state_dict': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
-            }, is_best=False, filename=curr_model_path / checkpoint_name)
+            }
+
+            # applicable to hf architectures
+            # todo: create model class for simclr to req. self.backbone, self.head, and self.config so we don't need to have this safe guard
+            if hasattr(self.model, "config"):
+                checkpoint["config"] = self.model.backbone.config.to_dict()
+
+            if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epoch - self.args.save_last_n:
+                save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
             # logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
@@ -150,7 +155,6 @@ class SimCLR(object):
 
         scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
 
-        date = datetime.datetime.now()
         n_iter = 0
 
         for curr_epoch in range(self.args.epochs):
@@ -179,30 +183,26 @@ class SimCLR(object):
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/finetuning/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=date))
+            curr_model_path = Path("models/finetuning/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             # accelerate wraps in distributeddataparallel class so we have to access the module first
-            model_to_save = self.model.module if hasattr(self.model, "module") else self.model
+            # model_to_save = self.model.module if hasattr(self.model, "module") else self.model
             
             checkpoint = {
                 'epoch': self.args.epochs,
                 'model': self.args.model,
-                'state_dict': model_to_save.state_dict(),
+                'state_dict': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
             }
 
             # applicable to hf architectures
             # todo: create model class for simclr to req. self.backbone, self.head, and self.config so we don't need to have this safe guard
-            if hasattr(model_to_save, "config"):
-                checkpoint["config"] = model_to_save.backbone.config.to_dict()
+            if hasattr(self.model, "config"):
+                checkpoint["config"] = self.model.backbone.config.to_dict()
 
-            save_checkpoint({
-                'epoch': self.args.epochs,
-                'model': self.args.model,
-                'state_dict': self.model.state_dict(),
-                'optimizer': self.optimizer.state_dict(),
-            }, is_best=False, filename=curr_model_path / checkpoint_name)
+            if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epoch - self.args.save_last_n:
+                save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             # save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 

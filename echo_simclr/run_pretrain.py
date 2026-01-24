@@ -111,8 +111,21 @@ parser.add_argument(
     '--log-every-n-steps',
     default=100,
     type=int,
-    help='log every n steps'
+    help='log to tensorboard every n steps'
 )
+parser.add_argument(
+    '--save-every-n',
+    default=1,
+    type=int,
+    help='saves the model every n epochs'
+)
+parser.add_argument(
+    '--save-last-n',
+    default=10,
+    type=int,
+    help='saves the model for the last n epochs'
+)
+# todo: delete after implementing accelerate; not necessary
 # -------------------------------------------------
 # Precision
 # -------------------------------------------------
@@ -131,6 +144,7 @@ def main():
     # )
 
     args.device = "cuda"
+    args.date = datetime.datetime.now()
 
     dataset = ContrastiveLearningDataset(
         root_folder=args.data,
@@ -167,7 +181,7 @@ def main():
         # accelerator=accelerator, 
         args=args
     )
-    # simclr_model.train(train_loader)
+    simclr_model.train(train_loader)
 
 if __name__ == "__main__":
     setup_logging(Path("./logs/pretraining"),)

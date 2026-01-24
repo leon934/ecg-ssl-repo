@@ -22,6 +22,9 @@ clip_length=16
 
 accelerate launch \
     --num_processes=3 \
+    --mixed_precision=fp16 \
+    --num_machines=1 \
+    --dynamo_backend=no \
     echo_simclr/run.py \
 	-m ${model} \
 	-data ${data_path} \
