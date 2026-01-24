@@ -15,9 +15,9 @@ source ~/.bashrc
 source .venv/bin/activate
 
 data_path=./datasets/EchoNet-Dynamic/
-model=vit
+model=resnet50
 batch_size=768
-num_epochs=500
+num_epochs=100
 num_workers=8
 
 python echo_simclr/run_pretrain.py \

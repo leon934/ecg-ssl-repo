@@ -15,15 +15,16 @@ source ~/.bashrc
 source .venv/bin/activate
 
 data_path=./datasets/EchoNet-Dynamic/
-model=vit
-batch_size=768
+model_path=./models/01-23-2026_03:51:31_checkpoints/checkpoint_0499.pth.tar
+batch_size=256
 num_epochs=500
 num_workers=8
 
-python echo_simclr/run_pretrain.py \
-	--model ${model} \
+python echo_simclr/run_finetune.py \
+	--model-path ${model_path} \
 	--data ${data_path} \
 	--batch-size ${batch_size} \
+    --y-name EF \
 	--epochs ${num_epochs} \
 	--workers ${num_workers} \
 	--fp16-precision \

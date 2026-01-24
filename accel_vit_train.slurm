@@ -7,8 +7,8 @@
 #SBATCH --nodes=1   
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:a100:1
-#SBATCH --partition=gpu
+#SBATCH --gres=gpu:a40:2
+#SBATCH --partition=gpu-a40
 
 #First Executable Line
 source ~/.bashrc
@@ -16,16 +16,20 @@ source .venv/bin/activate
 
 data_path=./datasets/EchoNet-Dynamic/
 model=vit
-batch_size=768
-num_epochs=500
-num_workers=8
+batch_size=64
+num_epochs=200
+num_workers=4
 
-python echo_simclr/run_pretrain.py \
+accelerate launch \
+    --num_processes=2 \
+    --mixed_precision=fp16 \
+    --num_machines=1 \
+    --dynamo_backend=no \
+    echo_simclr/run_pretrain.py \
 	--model ${model} \
 	--data ${data_path} \
 	--batch-size ${batch_size} \
 	--epochs ${num_epochs} \
 	--workers ${num_workers} \
-	--fp16-precision \
     --save-every-n 5 \
     --save-last-n 10

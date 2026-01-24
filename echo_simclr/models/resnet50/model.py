@@ -1,23 +1,19 @@
-import torch.nn as nn
 import torch
+import torch.nn as nn
 
-from transformers import VivitModel, VivitConfig
+from transformers import ResNetConfig, ResNetModel as RNModel
 
-class ViViTModel(nn.Module):
+class ResNetModel(nn.Module):
     def __init__(self, image_size: int, channels: int, finetune_mode: bool, **kwargs):
-        super(ViViTModel, self).__init__()
+        super(ResNetModel, self).__init__()
 
-        clip_length = kwargs["clip_length"]
-
-        config = VivitConfig(
-            image_size=image_size,
+        config = ResNetConfig(
             num_channels=channels,
-            num_frames=clip_length
         )
 
-        self.backbone = VivitModel(config)
+        self.backbone = RNModel(config)
 
-        dim_mlp = self.backbone.config.hidden_size
+        dim_mlp = config.hidden_sizes[-1]
         OUTPUT_DIM = 256
 
         if finetune_mode:
@@ -28,13 +24,11 @@ class ViViTModel(nn.Module):
         else:
             self.head = nn.Sequential(
                 nn.Linear(dim_mlp, dim_mlp),
-                nn.BatchNorm1d(dim_mlp),
-                nn.ReLU(),
+                nn.ReLU(), 
                 nn.Linear(dim_mlp, OUTPUT_DIM)
             )
-
-    def forward(self, x) -> torch.Tensor:
-        h = self.backbone(x).last_hidden_state[:, 0]
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = torch.flatten(self.backbone(x).pooler_output, 1)
         z = self.head(h)
 
         return z

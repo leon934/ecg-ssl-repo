@@ -1,13 +1,11 @@
+import datetime
+import logging
 import os
+from pathlib import Path
 import shutil
 
 import torch
 import yaml
-
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
-    torch.save(state, filename)
-    if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
 
 def save_config_file(model_checkpoints_folder, args):
     if not os.path.exists(model_checkpoints_folder):
@@ -30,3 +28,17 @@ def accuracy(output, target, topk=(1,)):
             correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
+
+def setup_logging(log_dir: Path):
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    logging.basicConfig(
+        filename=log_dir / "training-{date:%m-%d-%Y_%H:%M:%S}.log".format(date=datetime.datetime.now()),
+        level=logging.DEBUG,
+        filemode="w"
+    )
+
+def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+    torch.save(state, filename)
+    if is_best:
+        shutil.copyfile(filename, 'model_best.pth.tar')

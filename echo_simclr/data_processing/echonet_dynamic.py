@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import numpy as np
 import av
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
@@ -10,38 +10,47 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
 
     if dataset_path.exists():
         print(f"Found saved EchoNet-Dynamic dataset for {args.model} model. Skipping creating views.")
-        dataset_dict = np.load(dataset_path, mmap_mode="r", allow_pickle=True)
+        save_arr = np.load(dataset_path, mmap_mode="r", allow_pickle=True)
 
-        return dataset_dict["TRAIN"]
+        return save_arr
 
-    video_name_df = pd.read_csv(root_folder / "FileList.csv")
+    video_name_df = pd.read_csv(root_folder / "FileList.csv",)
 
-    dataset_dict = {
-        "TRAIN": [],
-        "VAL":   [],
-        "TEST":  []
-    }
-    
-    # faster than pandas loc
-    split_map = dict(zip(video_name_df["FileName"], video_name_df["Split"]))
+    splits = ("X", "TRAIN", "VAL", "TEST")
+    dataset_dict, ef_dict, es_dict, edv_dict = (
+        {s: [] for s in splits} for _ in range(4)
+    )
 
     # iterate through each .avi file
-    for file_name in tqdm(video_name_df["FileName"]):
-        obj = av.open(root_folder / "videos" / (file_name + ".avi"))
-
-        curr_split = split_map[file_name]
-        curr_arr = dataset_dict[curr_split]
+    for row in tqdm(video_name_df.itertuples(), total=len(video_name_df)):
+        obj = av.open(root_folder / "Videos" / (row.FileName + ".avi"))
+        curr_split = row.Split
 
         video_arr = np.expand_dims(np.stack([frame.to_ndarray(format="gray") for frame in obj.decode(video=0)]), axis=1)
         
-        if args.model == "vit": 
-            curr_arr.append(video_arr)
+        if args.model == "vit" or args.model == "resnet50": 
+            dataset_dict[curr_split].append(video_arr)
+
+            ef_dict[curr_split].append(row.EF)
+            es_dict[curr_split].append(row.ESV)
+            edv_dict[curr_split].append(row.EDV)
         # only want videos >= clip_length, since we rely on sampling a video of length clip_length
         elif args.model == "vivit" and len(video_arr) >= args.clip_length:
-            curr_arr.append(video_arr)
+            dataset_dict[curr_split].append(video_arr)
 
-    # keep only np arr, not idx
-    np.savez(dataset_path, **{k: np.array(v, dtype=object) for k, v in dataset_dict.items()})
+            ef_dict[curr_split].append(row.EF)
+            es_dict[curr_split].append(row.ESV)
+            edv_dict[curr_split].append(row.EDV)
+
+    save_arr = {}
+
+    for split in ("TRAIN", "TEST", "VAL"):
+        save_arr[f"X_{split}"] = np.array(dataset_dict[split], dtype=object)
+        save_arr[f"EF_{split}"] = np.array(ef_dict[split], dtype=np.float32)
+        save_arr[f"ESV_{split}"] = np.array(es_dict[split], dtype=np.float32)
+        save_arr[f"EDV_{split}"] = np.array(edv_dict[split], dtype=np.float32)
+
+    np.savez(dataset_path, **save_arr)
     print(f"Finished saving EchoNet NumPy array for {args.model} model.")
 
-    return dataset_dict["TRAIN"]
+    return save_arr

@@ -1,14 +1,14 @@
 import argparse
 import logging
 from pathlib import Path
-import datetime
 
+# from accelerate import Accelerator
 import torch
 
 from models.model import get_model
-from models.vit.model import model_dict
 from cl_dataset import ContrastiveLearningDataset
 from simclr import SimCLR
+from utils import setup_logging
 
 parser = argparse.ArgumentParser(description='PyTorch SimCLR')
 
@@ -18,29 +18,22 @@ parser = argparse.ArgumentParser(description='PyTorch SimCLR')
 parser.add_argument(
     '-m', '--model',
     metavar="MODEL",
-    choices=["vit", "vivit"],
+    choices=["vit", "vivit", "resnet50"],
     help='available models: vivit and vit',
     required=True
-)
-parser.add_argument(
-    '-a', '--arch',
-    metavar='ARCH',
-    choices=model_dict.keys(),
-    default=None,
-    help='model architecture: ' + ' | '.join(model_dict)
 )
 
 # -------------------------------------------------
 # Dataset
 # -------------------------------------------------
 parser.add_argument(
-    '-data',
+    '--data',
     metavar='DIR',
-    help='path to dataset',
+    help='path to dataset directory',
     required=True
 )
 parser.add_argument(
-    '-dataset-name',
+    '--dataset-name',
     default='echonet-dynamic',
     choices=['echonet-dynamic'],
     help='dataset name'
@@ -105,19 +98,12 @@ parser.add_argument(
     help='disable CUDA'
 )
 parser.add_argument(
-    '--gpu-index',
-    default=0,
-    type=int,
-    help='GPU index to use (default: 0)'
-)
-parser.add_argument(
     '-j', '--workers',
     default=12,
     type=int,
     metavar='N',
     help='number of data loading workers (default: 12)'
 )
-
 # -------------------------------------------------
 # Logging
 # -------------------------------------------------
@@ -125,9 +111,21 @@ parser.add_argument(
     '--log-every-n-steps',
     default=100,
     type=int,
-    help='log every n steps'
+    help='log to tensorboard every n steps'
 )
-
+parser.add_argument(
+    '--save-every-n',
+    default=1,
+    type=int,
+    help='saves the model every n epochs'
+)
+parser.add_argument(
+    '--save-last-n',
+    default=10,
+    type=int,
+    help='saves the model for the last n epochs'
+)
+# todo: delete after implementing accelerate; not necessary
 # -------------------------------------------------
 # Precision
 # -------------------------------------------------
@@ -137,46 +135,54 @@ parser.add_argument(
     help='use 16-bit (mixed) precision training'
 )
 
-
-def setup_logging(log_dir: Path):
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    logging.basicConfig(
-        filename=log_dir / "training-{date:%m-%d-%Y_%H:%M:%S}.log".format(date=datetime.datetime.now()),
-        level=logging.DEBUG,
-        filemode="w"
-    )
-
 def main():
     args = parser.parse_args()
 
-    args.device = (
-        f"cuda:{args.gpu_index}"
-        if torch.cuda.is_available() and args.gpu_index is not None and args.gpu_index >= 0
-        else "cpu"
+    # moves to gpu if possible when fp16 flag enabled
+    # accelerator = Accelerator(
+    #     mixed_precision="fp16" if args.fp16_precision else "no"
+    # )
+
+    args.device = "cuda"
+    args.date = datetime.datetime.now()
+
+    dataset = ContrastiveLearningDataset(
+        root_folder=args.data,
+        model_type=args.model,
+        dataset_name=args.dataset_name,
+        addl_args=args
     )
-    args.model_dict = model_dict
 
-    data = ContrastiveLearningDataset(args.data)
-    dataset = data.get_dataset(args.dataset_name, args)
-
+    train_data = dataset.get_dataset_split(dataset_name=args.dataset_name, split="TRAIN")
     train_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=args.batch_size, shuffle=True,
-        num_workers=0, pin_memory=True, drop_last=True
+        train_data, batch_size=args.batch_size, shuffle=True,
+        num_workers=args.workers, pin_memory=True, drop_last=True
     )
 
-    model = get_model(model_name=args.model, dataset_name=args.dataset_name, clip_length=args.clip_length, arch_type=args.arch)
-    model = model.to(args.device)
+    model = get_model(
+        model_name=args.model,
+        dataset_name=args.dataset_name,
+        clip_length=args.clip_length,
+        finetune_mode=False
+    )
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 
                                                            last_epoch=-1)
-    
+
+    # model, optimizer, train_loader, scheduler = accelerator.prepare(model, optimizer, train_loader, scheduler)
+
     logging.info(f"Starting training with {args.model} model.")
     
-    simclr_model = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
+    simclr_model = SimCLR(
+        model=model, 
+        optimizer=optimizer, 
+        scheduler=scheduler, 
+        # accelerator=accelerator, 
+        args=args
+    )
     simclr_model.train(train_loader)
 
 if __name__ == "__main__":
-    setup_logging(Path("./logs"))
+    setup_logging(Path("./logs/pretraining"),)
     main()
