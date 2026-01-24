@@ -27,5 +27,5 @@ python echo_simclr/run_pretrain.py \
 	--epochs ${num_epochs} \
 	--workers ${num_workers} \
 	--fp16-precision \
-    --save-every-n  \
-    --save-last-n
+    --save-every-n 5 \
+    --save-last-n 10

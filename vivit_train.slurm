@@ -27,4 +27,6 @@ python echo_simclr/run_pretrain.py \
 	--epochs ${num_epochs} \
 	--workers 6 \
 	--fp16-precision \
-	--clip-length ${clip_length}
+	--clip-length ${clip_length} \
+    --save-every-n 5 \
+    --save-last-n 10

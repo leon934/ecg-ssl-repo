@@ -32,5 +32,6 @@ accelerate launch \
 	--epochs ${num_epochs} \
 	--gpu-index 0 \
 	-j 3 \
-	--fp16-precision \
-	--clip-length ${clip_length}
+	--clip-length ${clip_length} \
+    --save-every-n 5 \
+    --save-last-n 10
