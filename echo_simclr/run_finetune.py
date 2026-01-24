@@ -2,7 +2,7 @@ import argparse
 import datetime
 from pathlib import Path
 
-# from accelerate import Accelerator
+from accelerate import Accelerator
 import torch
 
 from cl_dataset import ContrastiveLearningDataset
@@ -108,24 +108,11 @@ parser.add_argument(
     type=int,
     help='saves the model for the last n epochs'
 )
-# todo: no longer necessary w/ accelerate since it can be passed in thru cli args w/ accelerate
-# -------------------------------------------------
-# Precision
-# -------------------------------------------------
-parser.add_argument(
-    '--fp16-precision',
-    action='store_true',
-    help='use 16-bit (mixed) precision training'
-)
 
 def main():
     args = parser.parse_args()
 
-    # accelerator = Accelerator(
-    #     mixed_precision="fp16" if args.fp16_precision else "no"
-    # )
-
-    args.device = "cuda"
+    accelerator = Accelerator()
     args.date = datetime.datetime.now()
 
     model_data = torch.load(args.model_path, map_location="cpu")
@@ -172,16 +159,18 @@ def main():
         **{param: arg() for param, arg in addl_model_args.items()}
     )
     model.load_state_dict(model_state_dict, strict=False)
-    model = model.float().to(args.device)
+    model = model.float()
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr)
+
+    model, optimizer, dataloader_dict = accelerator.prepare(model, optimizer, *dataloader_dict.values())
 
     # no scheduler/weight decay mentioned in simclr paper for ft
     simclr_model = SimCLR(
         model=model, 
         optimizer=optimizer,
         scheduler=None,
-        # accelerator=accelerator,
+        accelerator=accelerator,
         args=args
     )
     simclr_model.finetune(**dataloader_dict)

@@ -3,7 +3,7 @@ import datetime
 import logging
 from pathlib import Path
 
-# from accelerate import Accelerator
+from accelerate import Accelerator
 import torch
 
 from models.model import get_model
@@ -126,25 +126,13 @@ parser.add_argument(
     type=int,
     help='saves the model for the last n epochs'
 )
-# todo: delete after implementing accelerate; not necessary
-# -------------------------------------------------
-# Precision
-# -------------------------------------------------
-parser.add_argument(
-    '--fp16-precision',
-    action='store_true',
-    help='use 16-bit (mixed) precision training'
-)
 
 def main():
     args = parser.parse_args()
 
     # moves to gpu if possible when fp16 flag enabled
-    # accelerator = Accelerator(
-    #     mixed_precision="fp16" if args.fp16_precision else "no"
-    # )
+    accelerator = Accelerator()
 
-    args.device = "cuda"
     args.date = datetime.datetime.now()
 
     dataset = ContrastiveLearningDataset(
@@ -171,7 +159,7 @@ def main():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 
                                                            last_epoch=-1)
 
-    # model, optimizer, train_loader, scheduler = accelerator.prepare(model, optimizer, train_loader, scheduler)
+    model, optimizer, train_loader, scheduler = accelerator.prepare(model, optimizer, train_loader, scheduler)
 
     logging.info(f"Starting training with {args.model} model.")
     
@@ -179,7 +167,7 @@ def main():
         model=model, 
         optimizer=optimizer, 
         scheduler=scheduler, 
-        # accelerator=accelerator, 
+        accelerator=accelerator, 
         args=args
     )
     simclr_model.train(train_loader)

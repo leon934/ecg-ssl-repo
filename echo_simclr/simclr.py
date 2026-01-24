@@ -2,11 +2,9 @@ import logging
 from pathlib import Path
 
 import torch
-# import torch.distributed.nn.functional as dist_nn
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
-# from accelerate import Accelerator
-from torch.amp import GradScaler, autocast
+from accelerate import Accelerator
 
 from utils import accuracy, save_config_file, save_checkpoint
 
@@ -18,41 +16,41 @@ class SimCLR(object):
             model, 
             optimizer,
             scheduler,
-            # accelerator: Accelerator,
+            accelerator: Accelerator,
             args
         ):
-        self.model = model.to(args.device)
+        self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
-        # self.accelerator = accelerator
+        self.accelerator = accelerator
         self.args = args
 
         self.writer = SummaryWriter()
         self.pretraining_criterion = torch.nn.CrossEntropyLoss()
         self.finetuning_criterion = torch.nn.MSELoss()
 
-        # self.device = self.accelerator.device
-        self.device = self.args.device
+        self.device = self.accelerator.device
 
     def info_nce_loss(self, features):
-        # features = torch.distributed.nn.functional.all_gather(features)
-        # features = torch.cat(features, dim=0)
+        # used instead of accelerator.gather since all_gather has back-propagation
+        features = torch.distributed.nn.functional.all_gather(features)
+        features = torch.cat(features, dim=0)
 
-        # total_size = features.shape[0]
-        # n_views = 2
-        # global_batch_size = total_size // n_views
+        total_size = features.shape[0]
+        n_views = 2
+        global_batch_size = total_size // n_views
         
-        # # reshape to [num_procs, 2, local_batch_size, Dim]
-        # num_processes = self.accelerator.num_processes
-        # local_batch = global_batch_size // num_processes
+        # reshape to [num_procs, 2, local_batch_size, Dim]
+        num_processes = self.accelerator.num_processes
+        local_batch = global_batch_size // num_processes
         
-        # features = features.view(num_processes, n_views, local_batch, -1) 
-        # features = features.permute(1, 0, 2, 3)
-        # features = features.reshape(2 * global_batch_size, -1)
+        features = features.view(num_processes, n_views, local_batch, -1) 
+        features = features.permute(1, 0, 2, 3)
+        features = features.reshape(2 * global_batch_size, -1)
 
-        # batch_size = global_batch_size
+        batch_size = global_batch_size
 
-        labels = torch.cat([torch.arange(self.args.batch_size) for _ in range(2)], dim=0)
+        labels = torch.cat([torch.arange(batch_size) for _ in range(2)], dim=0)
         labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
         labels = labels.to(self.device)
 
@@ -84,22 +82,19 @@ class SimCLR(object):
         n_iter = 0
         logging.info(f"Start SimCLR training for {self.args.epochs} epochs with {self.args.dataset_name} dataset.")
 
-        scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
-
         for curr_epoch in range(self.args.epochs):
             for images, _ in train_loader:
-                images = torch.cat(images, dim=0).to(self.args.device)
+                images = torch.cat(images, dim=0)
 
-                with autocast(device_type=self.args.device, enabled=self.args.fp16_precision):
+                with self.accelerator.autocast():
                     features = self.model(images)
                     logits, labels = self.info_nce_loss(features)
 
                     loss = self.pretraining_criterion(logits, labels)
 
                 self.optimizer.zero_grad()
-                scaler.scale(loss).backward()
-                scaler.step(self.optimizer)
-                scaler.update()
+                self.accelerator.backward(loss)
+                self.optimizer.step()
 
                 if n_iter % self.args.log_every_n_steps == 0:
                     top1, top5 = accuracy(logits, labels, topk=(1, 5))
@@ -119,25 +114,24 @@ class SimCLR(object):
             curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
-            # model_to_save = self.model.module if hasattr(self.model, "module") else self.model
+            model_to_save = self.model.module if hasattr(self.model, "module") else self.model
 
             checkpoint = {
                 'epoch': self.args.epochs,
                 'model': self.args.model,
-                'state_dict': self.model.state_dict(),
+                'state_dict': model_to_save.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
             }
 
             # applicable to hf architectures
             # todo: create model class for simclr to req. self.backbone, self.head, and self.config so we don't need to have this safe guard
-            if hasattr(self.model, "config"):
-                checkpoint["config"] = self.model.backbone.config.to_dict()
+            if hasattr(model_to_save, "config"):
+                checkpoint["config"] = model_to_save.backbone.config.to_dict()
 
-            if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epoch - self.args.save_last_n:
-                save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
+            if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epochs - self.args.save_last_n:
+                self.accelerator.save(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
-            # logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
             logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}")
 
         logging.info("Training finished.")
@@ -152,25 +146,18 @@ class SimCLR(object):
 
         logging.info(f"Starting fine-tuning for downstream task: {self.args.y_name} prediction.")
 
-        scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
-
         n_iter = 0
 
         for curr_epoch in range(self.args.epochs):
             self.model.train()
             for image, label in train_loader:
-                image = image.to(self.args.device)
-                label = label.to(self.args.device)
-
-                with autocast(device_type=self.args.device, enabled=self.args.fp16_precision):
-                # with self.accelerator.autocast():
+                with self.accelerator.autocast():
                     pred = self.model(image).squeeze(-1)
                     loss = self.finetuning_criterion(pred, label)
 
                 self.optimizer.zero_grad()
-                scaler.scale(loss).backward()
-                scaler.step(self.optimizer)
-                scaler.update()
+                self.accelerator.backward(loss)
+                self.optimizer.step()
 
                 # if n_iter % self.args.log_every_n_steps == 0:
                 #     avg_loss = self.accelerator.gather(loss).mean()
@@ -186,47 +173,53 @@ class SimCLR(object):
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             # accelerate wraps in distributeddataparallel class so we have to access the module first
-            # model_to_save = self.model.module if hasattr(self.model, "module") else self.model
+            model_to_save = self.model.module if hasattr(self.model, "module") else self.model
             
             checkpoint = {
                 'epoch': self.args.epochs,
                 'model': self.args.model,
-                'state_dict': self.model.state_dict(),
+                'state_dict': model_to_save.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
             }
 
             # applicable to hf architectures
             # todo: create model class for simclr to req. self.backbone, self.head, and self.config so we don't need to have this safe guard
-            if hasattr(self.model, "config"):
-                checkpoint["config"] = self.model.backbone.config.to_dict()
+            if hasattr(model_to_save, "config"):
+                checkpoint["config"] = model_to_save.backbone.config.to_dict()
 
-            if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epoch - self.args.save_last_n:
+            if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epochs - self.args.save_last_n:
                 save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             # save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
             self.model.eval()
             val_loss = 0.0
+            total_val_samples = 0
 
             with torch.no_grad():
                 for image, label in val_loader:
-                    image = image.to(self.args.device)
-                    label = label.to(self.args.device)
-
                     pred = self.model(image).squeeze(-1)
-                    val_loss += self.finetuning_criterion(pred, label)
+                    loss = self.finetuning_criterion(pred, label)
 
-            val_loss /= len(val_loader)
+                    batch_size = image.size(0)
+                    val_loss += val_loss.item() * batch_size
+                    total_val_samples += batch_size
+
+            val_loss /= total_val_samples
             logging.info(f"Validation loss for epoch {curr_epoch}: {val_loss}")
 
         test_loss = 0.0
+        total_test_samples = 0
 
         for image, label in test_loader:
-            image = image.to(self.args.device)
-            label = label.to(self.args.device)
-
             pred = self.model(image).squeeze(-1)
-            test_loss += self.finetuning_criterion(pred, label)
+            loss += self.finetuning_criterion(pred, label)
+
+            batch_size = image.size(0)
+            test_loss += val_loss.item() * batch_size
+            total_test_samples += batch_size
+
+        test_loss /= total_test_samples
 
         logging.info(f"Final testing loss: {test_loss}")
         logging.info("Fine-tuning finished.")
