@@ -10,117 +10,145 @@ First, the repository requires:
 2. Unzipped `/EchoNet-Dynamic/` in `~/datasets`.
     - Available @ [EchoNet-Dynamic](https://www.kaggle.com/datasets/mahnurrahman/echonet-dynamic)
 
+After unzipping the file and adding the contents to `~/datasets/`, you should have `~/datasets/EchoNet-Dynamic/` which you will use to point the process to the correct dataset.
+
 ## Contents
 
 1. `~/simclr` contains the remade contents of the original SimCLR repository.
 2. `echonet_eda.ipynb` contains the minor exploratory data analysis contents & prototyping.
 
-## Running code
+## Running code for pretraining the model
 
-Example command with required arguments:
+The `*_train.slurm` files can be viewed to get a good idea on how to train each of the models.
 
-```bash
-python run.py -a vit_b_16 -data ../datasets/EchoNet-Dynamic/
-```
-
-This specifies the model architecture and the dataset root path. Below is a full list of available command-line flags and their descriptions.
+Below is a full list of available command-line flags and their descriptions.
 
 ### Command-line arguments
 
-- `-a`, `--arch` (`ARCH`)
+---
 
-    Model architecture to use. Must be one of the keys defined in `model_dict`.
+### Model / Architecture
 
-    **Example:** `vit_b_16`
+| Argument        | Type   | Choices / Default          | Description               | Required |
+| --------------- | ------ | -------------------------- | ------------------------- | -------- |
+| `-m`, `--model` | string | `vit`, `vivit`, `resnet50` | Model architecture to use | Yes      |
 
-- `-data` (`DIR`)
+---
 
-    Path to the dataset root directory.
+### Dataset
 
-    **Example:** `../datasets/EchoNet-Dynamic/`
+| Argument         | Type   | Choices / Default | Description               | Required |
+| ---------------- | ------ | ----------------- | ------------------------- | -------- |
+| `--data`         | string | —                 | Path to dataset directory | Yes      |
+| `--dataset-name` | string | `echonet-dynamic` | Name of the dataset       | No       |
 
-- `-dataset-name`
+---
 
-    Name of the dataset. Used to select dataset-specific loading logic.
+### Training
 
-    **Choices:** `echonet-dynamic`, `cifar10`
-    **Default:** `echonet-dynamic`
+| Argument             | Type  | Default | Description                            | Required |
+| -------------------- | ----- | ------- | -------------------------------------- | -------- |
+| `-b`, `--batch-size` | int   | 256     | Mini-batch size; total across all GPUs | No       |
+| `--epochs`           | int   | 200     | Number of total epochs to run          | No       |
+| `--temperature`      | float | 0.07    | Softmax temperature                    | No       |
+| `--clip-length`      | int   | 32      | Clip length for ViViT                  | No       |
 
-- `--lr`, `--learning-rate` (`LR`)
+---
 
-    Initial learning rate.
+### Optimization
 
-    **Default:** `0.0003`
+| Argument                  | Type  | Default | Description           | Required |
+| ------------------------- | ----- | ------- | --------------------- | -------- |
+| `--lr`, `--learning-rate` | float | 3e-4    | Initial learning rate | No       |
+| `--wd`, `--weight-decay`  | float | 1e-4    | Weight decay          | No       |
 
-- `--wd`, `--weight-decay` (`W`)
+---
 
-    Weight decay (L2 regularization strength).
+### System / Hardware
 
-    **Default:** `1e-4`
+| Argument          | Type | Default | Description                    | Required |
+| ----------------- | ---- | ------- | ------------------------------ | -------- |
+| `--disable-cuda`  | flag | False   | Disable CUDA                   | No       |
+| `-j`, `--workers` | int  | 12      | Number of data loading workers | No       |
 
-- `-b`, `--batch-size` (`N`)
+---
 
-    Mini-batch size. This is the **total batch size across all GPUs** when using Data Parallel or Distributed Data Parallel.
+### Logging
 
-    **Default:** `256`
+| Argument              | Type | Default | Description                          | Required |
+| --------------------- | ---- | ------- | ------------------------------------ | -------- |
+| `--log-every-n-steps` | int  | 100     | Log to TensorBoard every n steps     | No       |
+| `--save-every-n`      | int  | 1       | Save model every n epochs            | No       |
+| `--save-last-n`       | int  | 10      | Save the model for the last n epochs | No       |
 
-- `--epochs` (`N`)
+---
 
-    Total number of training epochs.
+### Precision
 
-    **Default:** `200`
+| Argument           | Type | Default | Description                           | Required |
+| ------------------ | ---- | ------- | ------------------------------------- | -------- |
+| `--fp16-precision` | flag | False   | Use 16-bit (mixed) precision training | No       |
+---
 
-- `-j`, `--workers` (`N`)
+## Running code for fine-tuning the model
 
-    Number of data loading worker processes.
+The `*_fientune.slurm` files can be viewed to get a good idea on how to train each of the models.
 
-    **Default:** `12`
+Below is a full list of available command-line flags and their descriptions.
 
-- `--temperature`
+---
 
-    Softmax temperature used in the contrastive loss.
+### Finetuning
 
-    **Default:** `0.07`
+| Argument              | Type   | Choices / Default  | Description                            | Required |
+| --------------------- | ------ | ------------------ | -------------------------------------- | -------- |
+| `-mp`, `--model-path` | string | —                  | Path to `.pth` model file              | Yes      |
+| `-b`, `--batch-size`  | int    | 256                | Mini-batch size; total across all GPUs | No       |
+| `--epochs`            | int    | 200                | Number of total epochs to run          | No       |
+| `-y`, `--y-name`      | string | `EF`, `EDV`, `ESV` | Target variable                        | Yes      |
 
-- `--log-every-n-steps`
+---
 
-    Log training metrics every _n_ steps.
+### Dataset
 
-    **Default:** `100`
+| Argument         | Type   | Choices / Default | Description                 | Required |
+| ---------------- | ------ | ----------------- | --------------------------- | -------- |
+| `--data`         | string | —                 | Path to dataset root folder | Yes      |
+| `--dataset-name` | string | `echonet-dynamic` | Dataset name                | No       |
 
-- `--gpu-index`
+---
 
-    GPU index to use when CUDA is enabled.
+### Optimization
 
-    **Default:** `0`
+| Argument                  | Type  | Choices / Default | Description           | Required |
+| ------------------------- | ----- | ----------------- | --------------------- | -------- |
+| `--lr`, `--learning-rate` | float | 3e-4              | Initial learning rate | No       |
+| `--wd`, `--weight-decay`  | float | 1e-4              | Weight decay          | No       |
 
-- `--disable-cuda`
+---
 
-    Disable CUDA and force CPU-only training.
+### System / Hardware
 
-- `--fp16-precision`
+| Argument          | Type | Choices / Default | Description                    | Required |
+| ----------------- | ---- | ----------------- | ------------------------------ | -------- |
+| `-j`, `--workers` | int  | 12                | Number of data loading workers | No       |
 
-    Enable mixed-precision (16-bit / FP16) training on GPU.
+---
 
-- `--clip-length`
+### Logging
 
-    Lets users decide clip length when training with ViViT.
+| Argument              | Type | Choices / Default | Description                      | Required |
+| --------------------- | ---- | ----------------- | -------------------------------- | -------- |
+| `--log-every-n-steps` | int  | 100               | Log every n steps                | No       |
+| `--save-every-n`      | int  | 1                 | Save model every n epochs        | No       |
+| `--save-last-n`       | int  | 10                | Save model for the last n epochs | No       |
 
-### Example with additional flags
+---
 
-```bash
-python run.py \
-  -a vit_b_16 \
-  -data ../datasets/EchoNet-Dynamic/ \
-  --epochs 100 \
-  -b 128 \
-  --lr 3e-4 \
-  --temperature 0.1 \
-  --fp16-precision
-```
+### Precision
 
-files that need to be modified to add a new model
+| Argument           | Type | Choices / Default | Description                           | Required |
+| ------------------ | ---- | ----------------- | ------------------------------------- | -------- |
+| `--fp16-precision` | flag | False             | Use 16-bit (mixed) precision training | No       |
 
-format of the dataset (dict, train, test, val) in order to use other ones
-
-command to evaluate model
+---
