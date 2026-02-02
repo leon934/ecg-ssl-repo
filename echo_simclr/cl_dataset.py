@@ -121,7 +121,7 @@ class ContrastiveLearningDataset:
         if dataset_name == "echonet-dynamic":
             for type_split, arr in self._dataset_dict[dataset_name](self.root_folder, self.args).items():
                 data, split = type_split.split("_")
-                setattr(self.dataset_split_dict[data], split.lower(), arr)
+                setattr(self.dataset_split_dict[data], split, arr)
                 
     @staticmethod
     def _get_simclr_pipeline_transform(size, s=1) -> v2.Compose:
@@ -145,8 +145,8 @@ class ContrastiveLearningDataset:
         # must lead to the root /EchoNet-Dynamic folder
         valid_datasets = {
             "echonet-dynamic": lambda: self.DatasetClass(
-                array=getattr(self.dataset_split_dict["X"], split.lower()),
-                target_var_array=getattr(self.dataset_split_dict[Y_name], split.lower()) if Y_name is not None else None,
+                array=getattr(self.dataset_split_dict["X"], split),
+                target_var_array=getattr(self.dataset_split_dict[Y_name], split) if Y_name is not None else None,
                 transform=ContrastiveLearningViewGenerator(self._get_simclr_pipeline_transform(size=112)) if Y_name is None else None,
                 clip_length=self.args.clip_length if self.args.model == "vivit" else None)
         }

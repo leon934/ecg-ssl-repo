@@ -16,7 +16,7 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
 
     video_name_df = pd.read_csv(root_folder / "FileList.csv",)
 
-    splits = ("X", "TRAIN", "VAL", "TEST")
+    splits = ("X", "train", "val", "test")
     dataset_dict, ef_dict, es_dict, edv_dict = (
         {s: [] for s in splits} for _ in range(4)
     )
@@ -24,7 +24,7 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
     # iterate through each .avi file
     for row in tqdm(video_name_df.itertuples(), total=len(video_name_df)):
         obj = av.open(root_folder / "Videos" / (row.FileName + ".avi"))
-        curr_split = row.Split
+        curr_split = row.Split.lower()
 
         video_arr = np.expand_dims(np.stack([frame.to_ndarray(format="gray") for frame in obj.decode(video=0)]), axis=1)
         
@@ -44,7 +44,7 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
 
     save_arr = {}
 
-    for split in ("TRAIN", "TEST", "VAL"):
+    for split in ("train", "test", "val"):
         save_arr[f"X_{split}"] = np.array(dataset_dict[split], dtype=object)
         save_arr[f"EF_{split}"] = np.array(ef_dict[split], dtype=np.float32)
         save_arr[f"ESV_{split}"] = np.array(es_dict[split], dtype=np.float32)
