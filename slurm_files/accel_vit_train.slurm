@@ -7,8 +7,8 @@
 #SBATCH --nodes=1   
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:a40:2
-#SBATCH --partition=gpu-a40
+#SBATCH --gres=gpu:a100:2
+#SBATCH --partition=gpu
 
 #First Executable Line
 source ~/.bashrc
