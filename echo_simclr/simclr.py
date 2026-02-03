@@ -8,8 +8,6 @@ from accelerate import Accelerator
 
 from utils import accuracy, save_config_file, save_checkpoint
 
-torch.manual_seed(0)
-
 class SimCLR(object):
     def __init__(
             self, 
@@ -31,7 +29,7 @@ class SimCLR(object):
 
         self.device = self.accelerator.device
 
-    def info_nce_loss(self, features):
+    def info_nce_loss(self, features: torch.Tensor):
         # used instead of accelerator.gather since all_gather has back-propagation
         features = torch.distributed.nn.functional.all_gather(features)
         features = torch.cat(features, dim=0)
@@ -80,7 +78,9 @@ class SimCLR(object):
         save_config_file(self.writer.log_dir, self.args)
 
         n_iter = 0
-        logging.info(f"Start SimCLR training for {self.args.epochs} epochs with {self.args.dataset_name} dataset.")
+
+        if self.accelerator.is_main_process:
+            logging.info(f"Start SimCLR training for {self.args.epochs} epochs with {self.args.dataset_name} dataset.")
 
         for curr_epoch in range(self.args.epochs):
             for images, _ in train_loader:
@@ -96,7 +96,7 @@ class SimCLR(object):
                 self.accelerator.backward(loss)
                 self.optimizer.step()
 
-                if n_iter % self.args.log_every_n_steps == 0:
+                if n_iter % self.args.log_every_n_steps == 0 and self.accelerator.is_main_process:
                     top1, top5 = accuracy(logits, labels, topk=(1, 5))
 
                     self.writer.add_scalar('loss', loss, global_step=n_iter)
@@ -111,7 +111,7 @@ class SimCLR(object):
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.date))
+            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.args.date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             model_to_save = self.model.module if hasattr(self.model, "module") else self.model
@@ -129,12 +129,14 @@ class SimCLR(object):
                 checkpoint["config"] = model_to_save.backbone.config.to_dict()
 
             if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epochs - self.args.save_last_n:
-                self.accelerator.save(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
-            logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
+                self.accelerator.save(checkpoint, curr_model_path / checkpoint_name)
 
-            logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}")
+            if self.accelerator.is_main_process:
+                logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
+                logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}")
 
-        logging.info("Training finished.")
+        if self.accelerator.is_main_process:
+            logging.info("Training finished.")
 
     def finetune(
         self, 
@@ -169,7 +171,7 @@ class SimCLR(object):
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/finetuning/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.date))
+            curr_model_path = Path("models/finetuning/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.args.date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             # accelerate wraps in distributeddataparallel class so we have to access the module first

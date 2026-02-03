@@ -6,7 +6,7 @@
 #SBATCH --output=./jobs/%j_%x_output
 #SBATCH --nodes=1   
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:a40:2
 #SBATCH --partition=gpu-a40
 
@@ -16,9 +16,9 @@ source .venv/bin/activate
 
 data_path=./datasets/EchoNet-Dynamic/
 model=vit
-batch_size=64
-num_epochs=200
-num_workers=4
+batch_size=256
+num_epochs=300
+num_workers=2
 
 accelerate launch \
     --num_processes=2 \

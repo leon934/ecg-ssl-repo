@@ -6,7 +6,7 @@
 #SBATCH --output=./jobs/%j_%x_output
 #SBATCH --nodes=1   
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:a100:1
 #SBATCH --partition=gpu
 
@@ -16,9 +16,9 @@ source .venv/bin/activate
 
 data_path=./datasets/EchoNet-Dynamic/
 model=resnet50
-batch_size=768
-num_epochs=100
-num_workers=8
+batch_size=1024
+num_epochs=300
+num_workers=4
 
 python echo_simclr/run_pretrain.py \
 	--model ${model} \

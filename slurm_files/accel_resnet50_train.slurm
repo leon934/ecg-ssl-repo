@@ -14,11 +14,10 @@
 source ~/.bashrc
 source .venv/bin/activate
 
+model=resnet50
 data_path=./datasets/EchoNet-Dynamic/
-batch_size=16
-num_epochs=200
-model=vivit
-clip_length=8
+batch_size=1024
+num_epochs=300
 
 accelerate launch \
     --num_processes=2 \
@@ -31,6 +30,5 @@ accelerate launch \
 	-b ${batch_size} \
 	--epochs ${num_epochs} \
 	-j 2 \
-	--clip-length ${clip_length} \
     --save-every-n 5 \
     --save-last-n 10

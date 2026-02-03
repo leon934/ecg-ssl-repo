@@ -3,7 +3,7 @@ import datetime
 import logging
 from pathlib import Path
 
-from accelerate import Accelerator
+from accelerate import Accelerator, InitProcessGroupKwargs
 import torch
 
 from models.model import get_model
@@ -128,21 +128,24 @@ parser.add_argument(
 )
 
 def main():
+    process_group_kwargs = InitProcessGroupKwargs(timeout=datetime.timedelta(hours=1))
+    accelerator = Accelerator(kwargs_handlers=[process_group_kwargs])
+
+    if accelerator.is_main_process:
+        setup_logging(Path("./logs/pretraining"))
+
     args = parser.parse_args()
-
-    # moves to gpu if possible when fp16 flag enabled
-    accelerator = Accelerator()
-
     args.date = datetime.datetime.now()
 
-    dataset = ContrastiveLearningDataset(
-        root_folder=args.data,
-        model_type=args.model,
-        dataset_name=args.dataset_name,
-        addl_args=args
-    )
+    with accelerator.main_process_first():
+        dataset = ContrastiveLearningDataset(
+            root_folder=args.data,
+            model_type=args.model,
+            dataset_name=args.dataset_name,
+            addl_args=args
+        )
 
-    train_data = dataset.get_dataset_split(dataset_name=args.dataset_name, split="TRAIN")
+    train_data = dataset.get_dataset_split(dataset_name=args.dataset_name, split="train")
     train_loader = torch.utils.data.DataLoader(
         train_data, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True, drop_last=True
@@ -161,7 +164,8 @@ def main():
 
     model, optimizer, train_loader, scheduler = accelerator.prepare(model, optimizer, train_loader, scheduler)
 
-    logging.info(f"Starting training with {args.model} model.")
+    if accelerator.is_main_process:
+        logging.info(f"Starting training with {args.model} model.")
     
     simclr_model = SimCLR(
         model=model, 
@@ -173,5 +177,4 @@ def main():
     simclr_model.train(train_loader)
 
 if __name__ == "__main__":
-    setup_logging(Path("./logs/pretraining"),)
     main()
