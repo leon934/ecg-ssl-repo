@@ -116,7 +116,7 @@ class SimCLR(object):
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.date))
+            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.args.date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             # model_to_save = self.model.module if hasattr(self.model, "module") else self.model
@@ -133,7 +133,7 @@ class SimCLR(object):
             if hasattr(self.model, "config"):
                 checkpoint["config"] = self.model.backbone.config.to_dict()
 
-            if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epoch - self.args.save_last_n:
+            if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epochs - self.args.save_last_n:
                 save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
@@ -182,7 +182,7 @@ class SimCLR(object):
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/finetuning/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.date))
+            curr_model_path = Path("models/finetuning/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.args.date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             # accelerate wraps in distributeddataparallel class so we have to access the module first
@@ -200,7 +200,7 @@ class SimCLR(object):
             if hasattr(self.model, "config"):
                 checkpoint["config"] = self.model.backbone.config.to_dict()
 
-            if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epoch - self.args.save_last_n:
+            if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epochs - self.args.save_last_n:
                 save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             # save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
