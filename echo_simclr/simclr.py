@@ -111,7 +111,7 @@ class SimCLR(object):
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.args.date))
+            curr_model_path = Path("models/pretraining/{date:%m-%d-%Y_%H:%M:%S}_{model}checkpoints".format(date=self.args.date, model=self.args.model))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             model_to_save = self.model.module if hasattr(self.model, "module") else self.model
