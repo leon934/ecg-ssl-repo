@@ -20,7 +20,7 @@ class ResNetModel(nn.Module):
             for param in self.backbone.parameters():
                 param.requires_grad = False
 
-            self.head = nn.Linear(dim_mlp, 1)
+            self.head = nn.Linear(dim_mlp, 3)
         else:
             self.head = nn.Sequential(
                 nn.Linear(dim_mlp, dim_mlp),

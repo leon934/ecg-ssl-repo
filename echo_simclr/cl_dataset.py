@@ -38,8 +38,6 @@ class FrameDataset(Dataset):
         self.array = array
         # converts to correct dtype to prevent further issues down the line
         self.target_array = torch.tensor(target_var_array, dtype=torch.float32) if target_var_array is not None else None
-
-        print(self.target_array.shape)
         
         self.length = len(self.array)
         self.transform = transform
@@ -148,7 +146,7 @@ class ContrastiveLearningDataset:
         valid_datasets = {
             "echonet-dynamic": lambda: self.DatasetClass(
                 array=getattr(self.dataset_split_dict["X"], split),
-                target_var_array=np.concatenate([getattr(self.dataset_split_dict[Y_name], split) for Y_name in ("ESV", "EDV", "EF")]) if use_Y else None,
+                target_var_array=np.stack([getattr(self.dataset_split_dict[Y_name], split) for Y_name in ("ESV", "EDV", "EF")], axis=1) if use_Y else None,
                 transform=ContrastiveLearningViewGenerator(self._get_simclr_pipeline_transform(size=112)) if not use_Y else None,
                 clip_length=self.args.clip_length if self.args.arch == "vivit" else None)
         }

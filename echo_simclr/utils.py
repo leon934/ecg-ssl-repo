@@ -29,11 +29,11 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
-def setup_logging(log_dir: Path, model_arch: str):
+def setup_logging(log_dir: Path, model_arch: str, date: datetime.time):
     log_dir.mkdir(parents=True, exist_ok=True)
 
     logging.basicConfig(
-        filename=log_dir / "training-{date:%m-%d-%Y_%H:%M:%S}-{arch}.log".format(date=datetime.datetime.now(), arch=model_arch),
+        filename=log_dir / "training-{date:%m-%d-%Y_%H:%M:%S}-{arch}.log".format(date=date, arch=model_arch),
         level=logging.DEBUG,
         filemode="w"
     )

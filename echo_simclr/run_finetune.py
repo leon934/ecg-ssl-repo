@@ -8,6 +8,7 @@ import torch
 from cl_dataset import ContrastiveLearningDataset
 from models.vit.model import ViTModel
 from models.vivit.model import ViViTModel
+from models.resnet50.model import ResNetModel
 from simclr import SimCLR
 from utils import setup_logging
 
@@ -114,6 +115,11 @@ parser.add_argument(
     type=int,
     help='saves the model for the last n epochs'
 )
+parser.add_argument(
+    '--fp16-precision',
+    action='store_true',
+    help='enables fp16 precision to reduce memory load'
+)
 
 def main():
     args = parser.parse_args()
@@ -121,6 +127,8 @@ def main():
 
     model_data = torch.load(args.model_path, map_location="cpu")
     args.arch, model_state_dict = model_data["model"], model_data["state_dict"]
+
+    setup_logging(Path("./logs/finetuning"), model_arch=args.arch, date=args.date)
 
     dataset = ContrastiveLearningDataset(
         root_folder=args.data,
@@ -137,8 +145,6 @@ def main():
         drop_last=(split == "train")
     ) for split in ("train", "test", "val")}
 
-    exit(0)
-
     # gets backbone w/o projection head
     model_state_dict = {layer : weights for layer, weights in model_state_dict.items() if not layer.startswith("head")}
     
@@ -152,6 +158,10 @@ def main():
         ),
         "vit": (
             lambda **kwargs: ViTModel(**kwargs),
+            {}
+        ),
+        "resnet50": (
+            lambda **kwargs: ResNetModel(**kwargs),
             {}
         )
     }
@@ -174,11 +184,10 @@ def main():
         model=model, 
         optimizer=optimizer,
         scheduler=None,
-        # accelerator=accelerator,
+        accelerator=None,
         args=args
     )
     simclr_model.finetune(**dataloader_dict)
 
 if __name__ == "__main__":
-    setup_logging(Path("./logs/finetuning"))
     main()

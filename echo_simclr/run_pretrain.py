@@ -145,7 +145,7 @@ def main():
     args.date = datetime.datetime.now()
 
     if accelerator.is_main_process:
-        setup_logging(Path("./logs/pretraining"), model_arch=args.arch)
+        setup_logging(Path("./logs/pretraining"), model_arch=args.arch, date=args.date)
 
     with accelerator.main_process_first():
         dataset = ContrastiveLearningDataset(

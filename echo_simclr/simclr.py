@@ -6,6 +6,7 @@ import torch
 from torch.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
+from torchmetrics.regression import R2Score
 
 from utils import accuracy, save_config_file, save_checkpoint
 
@@ -27,9 +28,15 @@ class SimCLR(object):
         # accel. and is_main are for pretraining
         # accel. is none is for finetuning, since it isn't necessary to use accel. there
         if self.accelerator and self.accelerator.is_main_process or self.accelerator is None:
-            self.writer = SummaryWriter(log_dir="runs/{date:%m-%d-%Y_%H:%M:%S}_{arch}".format(date=self.args.date, arch=self.args.arch))        
+            # todo: lowk a bandaid fix
+            mode = "pretraining" if self.accelerator else "finetuning"
 
-        self.device = self.accelerator.device
+            self.writer = SummaryWriter(log_dir="runs/{train_mode}/{date:%m-%d-%Y_%H:%M:%S}_{arch}".format(date=self.args.date, arch=self.args.arch, train_mode=mode))        
+
+        if self.accelerator:
+            self.device = self.accelerator.device
+        else:
+            self.device = "cuda"
 
     def info_nce_loss(self, features: torch.Tensor):
         # used instead of accelerator.gather since all_gather has back-propagation
@@ -154,9 +161,9 @@ class SimCLR(object):
         val_loader: torch.utils.data.DataLoader, 
         test_loader: torch.utils.data.DataLoader
     ):  
-        self.mae_criterion = torch.nn.L1Loss()
-        self.mse_criterion = torch.nn.MSELoss()
-        self.r2_criterion = torch.eva
+        self.mae_criterion = torch.nn.L1Loss(reduction='none')
+        self.mse_criterion = torch.nn.MSELoss(reduction='none')
+        self.r2_criterion = R2Score(num_outputs=3, multioutput='raw_values').to(self.device)
 
         save_config_file(self.writer.log_dir, self.args)
         scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
@@ -167,25 +174,45 @@ class SimCLR(object):
 
         for curr_epoch in range(self.args.epochs):
             self.model.train()
-            for image, label in train_loader:
+            epoch_mse = torch.zeros((3,), device=self.device)
+
+            for images, label in train_loader:
+                images = images.to(self.device)
+                label = label.to(self.device)
+
                 with autocast(device_type=self.args.device, enabled=self.args.fp16_precision):
-                    pred = self.model(image).squeeze(-1)
-                    loss = self.finetuning_criterion(pred, label)
+                    pred = self.model(images)
+                    raw_loss = self.mse_criterion(pred, label)
+
+                    self.r2_criterion.update(pred, label)
+
+                    loss_scalar = raw_loss.mean()
+                    loss_per_target = raw_loss.mean(dim=0).detach()
+
+                    epoch_mse += loss_per_target * self.args.batch_size
 
                 self.optimizer.zero_grad()
-                scaler.scale(loss).backward()
+                scaler.scale(loss_scalar).backward()
                 scaler.step(self.optimizer)
                 scaler.update()
 
                 if n_iter % self.args.log_every_n_steps == 0:
-                    self.writer.add_scalar('loss_n_steps', loss, global_step=n_iter)
-                    self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
+                    self.writer.add_scalar('ft/esv_mse_n_iter', loss_per_target[0], global_step=n_iter)
+                    self.writer.add_scalar('ft/edv_mse_n_iter', loss_per_target[1], global_step=n_iter)
+                    self.writer.add_scalar('ft/ef_mse_n_iter', loss_per_target[2], global_step=n_iter)
+                    
+                    self.writer.add_scalar('ft/learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
                 
                 n_iter += 1
 
+            avg_mse = epoch_mse / len(train_loader)
+            self.writer.add_scalar('ft/esv_mse_epoch', avg_mse[0], global_step=n_iter)
+            self.writer.add_scalar('ft/edv_mse_epoch', avg_mse[1], global_step=n_iter)
+            self.writer.add_scalar('ft/ef_mse_epoch', avg_mse[2], global_step=n_iter)
+
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/finetuning/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.args.date))
+            curr_model_path = Path("models/finetuning/{date:%m-%d-%Y_%H:%M:%S}-{arch}checkpoints".format(date=self.args.date, arch=self.args.arch))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             checkpoint = {
@@ -204,36 +231,81 @@ class SimCLR(object):
                 save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
+            # validation loss
             self.model.eval()
-            val_loss = 0.0
-            total_val_samples = 0
+            val_mae = torch.zeros((3,), device=self.device)
+
+            self.r2_criterion.reset()
 
             with torch.no_grad():
                 for image, label in val_loader:
-                    pred = self.model(image).squeeze(-1)
-                    loss = self.finetuning_criterion(pred, label)
+                    image = image.to(self.device)
+                    label = label.to(self.device)
 
-                    batch_size = image.size(0)
-                    val_loss += val_loss.item() * batch_size
-                    total_val_samples += batch_size
+                    pred = self.model(image)
 
-            val_loss /= total_val_samples
-            logging.info(f"Validation loss for epoch {curr_epoch}: {val_loss}")
-            self.writer.add_scalar("validation_loss", val_loss, global_step=curr_epoch)
+                    self.r2_criterion.update(pred, label)
 
-        test_loss = 0.0
-        total_test_samples = 0
+                    raw_mae = self.mae_criterion(pred, label)
+                    val_mae += raw_mae.sum(dim=0)
 
-        for image, label in test_loader:
-            pred = self.model(image).squeeze(-1)
-            loss += self.finetuning_criterion(pred, label)
+            val_mae /= len(val_loader)
+            val_r2_scores = self.r2_criterion.compute()
 
-            batch_size = image.size(0)
-            test_loss += val_loss.item() * batch_size
-            total_test_samples += batch_size
+            logging.info(f"Epoch {curr_epoch} Val MAE: ESV: {val_mae[0]:.2f}, EDV: {val_mae[1]:.2f}, EF: {val_mae[2]:.2f}")
+            logging.info(f"Epoch {curr_epoch} Val R2 : ESV: {val_r2_scores[0]:.2f}, EDV: {val_r2_scores[1]:.2f}, EF: {val_r2_scores[2]:.2f}")
 
-        test_loss /= total_test_samples
+            self.writer.add_scalar('ft/val/ESV_MAE', val_mae[0], global_step=curr_epoch)
+            self.writer.add_scalar('ft/val/EDV_MAE', val_mae[1], global_step=curr_epoch)
+            self.writer.add_scalar('ft/val/EF_MAE',  val_mae[2], global_step=curr_epoch)
+            
+            self.writer.add_scalar('ft/val/ESV_R2', val_r2_scores[0], global_step=curr_epoch)
+            self.writer.add_scalar('ft/val/EDV_R2', val_r2_scores[1], global_step=curr_epoch)
+            self.writer.add_scalar('ft/val/EF_R2',  val_r2_scores[2], global_step=curr_epoch)
 
-        logging.info(f"Final testing loss: {test_loss}")
-        self.writer.add_scalar("test_loss", )
+        logging.info("Evaluating MSE and MAE on test set")
+
+        test_mae_accum = torch.zeros((3,), device=self.device)
+        test_mse_accum = torch.zeros((3,), device=self.device)
+
+        self.r2_criterion.reset()
+
+        with torch.no_grad():
+            for image, label in test_loader:
+                image = image.to(self.device)
+                label = label.to(self.device)
+
+                pred = self.model(image)
+
+                self.r2_criterion.update(pred, label)
+
+                loss += self.finetuning_criterion(pred, label)
+
+                raw_mae = self.mae_criterion(pred, label)
+                raw_mse = self.mse_criterion(pred, label)
+
+                test_mae_accum += raw_mae.sum(dim=0)
+                test_mse_accum += raw_mse.sum(dim=0)
+
+        avg_test_mae = test_mae_accum / len(test_loader)
+        avg_test_mse = test_mse_accum / len(test_loader)
+
+        test_r2_scores = self.r2_criterion.compute()
+
+        logging.info(f"Final Test MAE: ESV: {avg_test_mae[0]:.4f}, EDV: {avg_test_mae[1]:.4f}, EF: {avg_test_mae[2]:.4f}")
+        logging.info(f"Final Test R2 : ESV: {test_r2_scores[0]:.4f}, EDV: {test_r2_scores[1]:.4f}, EF: {test_r2_scores[2]:.4f}")
+        logging.info(f"Final Test MSE: ESV: {avg_test_mse[0]:.4f}, EDV: {avg_test_mse[1]:.4f}, EF: {avg_test_mse[2]:.4f}")
+
+        self.writer.add_scalar('eval/test/ESV_MAE', avg_test_mae[0], global_step=self.args.epochs)
+        self.writer.add_scalar('eval/test/EDV_MAE', avg_test_mae[1], global_step=self.args.epochs)
+        self.writer.add_scalar('eval/EF_MAE',  avg_test_mae[2], global_step=self.args.epochs)
+        
+        self.writer.add_scalar('eval/test/ESV_R2', test_r2_scores[0], global_step=self.args.epochs)
+        self.writer.add_scalar('eval/test/EDV_R2', test_r2_scores[1], global_step=self.args.epochs)
+        self.writer.add_scalar('eval/test/EF_R2',  test_r2_scores[2], global_step=self.args.epochs)
+        
+        self.writer.add_scalar('eval/test/ESV_MSE', avg_test_mse[0], global_step=self.args.epochs)
+        self.writer.add_scalar('eval/test/EDV_MSE', avg_test_mse[1], global_step=self.args.epochs)
+        self.writer.add_scalar('eval/test/EF_MSE',  avg_test_mse[2], global_step=self.args.epochs)
+
         logging.info("Fine-tuning finished.")
