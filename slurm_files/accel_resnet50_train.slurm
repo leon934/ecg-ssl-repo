@@ -17,7 +17,8 @@ source .venv/bin/activate
 model=resnet50
 data_path=./datasets/EchoNet-Dynamic/
 batch_size=1024
-num_epochs=300
+num_epochs=800
+optimizer=lars
 
 accelerate launch \
     --num_processes=2 \
@@ -30,5 +31,5 @@ accelerate launch \
 	-b ${batch_size} \
 	--epochs ${num_epochs} \
 	-j 2 \
-    --save-every-n 5 \
+    --save-every-n 40 \
     --save-last-n 10

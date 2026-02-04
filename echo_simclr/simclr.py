@@ -1,10 +1,11 @@
 import logging
 from pathlib import Path
 
+from accelerate import Accelerator
 import torch
+from torch.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
-from accelerate import Accelerator
 
 from utils import accuracy, save_config_file, save_checkpoint
 
@@ -23,9 +24,10 @@ class SimCLR(object):
         self.accelerator = accelerator
         self.args = args
 
-        self.writer = SummaryWriter()
-        self.pretraining_criterion = torch.nn.CrossEntropyLoss()
-        self.finetuning_criterion = torch.nn.MSELoss()
+        # accel. and is_main are for pretraining
+        # accel. is none is for finetuning, since it isn't necessary to use accel. there
+        if self.accelerator and self.accelerator.is_main_process or self.accelerator is None:
+            self.writer = SummaryWriter(log_dir="runs/{date:%m-%d-%Y_%H:%M:%S}_{arch}".format(date=self.args.date, arch=self.args.arch))        
 
         self.device = self.accelerator.device
 
@@ -75,7 +77,10 @@ class SimCLR(object):
         return logits, labels
 
     def train(self, train_loader):
-        save_config_file(self.writer.log_dir, self.args)
+        self.pretraining_criterion = torch.nn.CrossEntropyLoss()
+
+        if self.accelerator.is_main_process:
+            save_config_file(self.writer.log_dir, self.args)
 
         n_iter = 0
 
@@ -83,6 +88,8 @@ class SimCLR(object):
             logging.info(f"Start SimCLR training for {self.args.epochs} epochs with {self.args.dataset_name} dataset.")
 
         for curr_epoch in range(self.args.epochs):
+            epoch_loss = 0
+
             for images, _ in train_loader:
                 images = torch.cat(images, dim=0)
 
@@ -91,6 +98,7 @@ class SimCLR(object):
                     logits, labels = self.info_nce_loss(features)
 
                     loss = self.pretraining_criterion(logits, labels)
+                    epoch_loss += loss.item()
 
                 self.optimizer.zero_grad()
                 self.accelerator.backward(loss)
@@ -99,26 +107,28 @@ class SimCLR(object):
                 if n_iter % self.args.log_every_n_steps == 0 and self.accelerator.is_main_process:
                     top1, top5 = accuracy(logits, labels, topk=(1, 5))
 
-                    self.writer.add_scalar('loss', loss, global_step=n_iter)
+                    self.writer.add_scalar('loss_n_steps', loss, global_step=n_iter)
                     self.writer.add_scalar('acc/top1', top1[0], global_step=n_iter)
                     self.writer.add_scalar('acc/top5', top5[0], global_step=n_iter)
                     self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
                 
                 n_iter += 1
-
-            if curr_epoch >= 10:
                 self.scheduler.step()
+
+            if self.accelerator.is_main_process:
+                avg_loss = epoch_loss / len(train_loader)
+                self.writer.add_scalar('loss_epoch', avg_loss, global_step=curr_epoch)
 
             # save model checkpoints
             checkpoint_name = "checkpoint_{:04d}.pth.tar".format(curr_epoch)
-            curr_model_path = Path("models/pretraining/{date:%m-%d-%Y_%H:%M:%S}_{model}checkpoints".format(date=self.args.date, model=self.args.model))
+            curr_model_path = Path("models/pretraining/{date:%m-%d-%Y_%H:%M:%S}-{model}-checkpoints".format(date=self.args.date, model=self.args.arch))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
             model_to_save = self.model.module if hasattr(self.model, "module") else self.model
 
             checkpoint = {
                 'epoch': self.args.epochs,
-                'model': self.args.model,
+                'model': self.args.arch,
                 'state_dict': model_to_save.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
             }
@@ -133,7 +143,7 @@ class SimCLR(object):
 
             if self.accelerator.is_main_process:
                 logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
-                logging.debug(f"Epoch: {curr_epoch}\tLoss: {loss}")
+                logging.debug(f"Epoch: {curr_epoch}\tLoss: {avg_loss}")
 
         if self.accelerator.is_main_process:
             logging.info("Training finished.")
@@ -144,7 +154,12 @@ class SimCLR(object):
         val_loader: torch.utils.data.DataLoader, 
         test_loader: torch.utils.data.DataLoader
     ):  
+        self.mae_criterion = torch.nn.L1Loss()
+        self.mse_criterion = torch.nn.MSELoss()
+        self.r2_criterion = torch.eva
+
         save_config_file(self.writer.log_dir, self.args)
+        scaler = GradScaler(device=self.args.device, enabled=self.args.fp16_precision)
 
         logging.info(f"Starting fine-tuning for downstream task: {self.args.y_name} prediction.")
 
@@ -153,19 +168,18 @@ class SimCLR(object):
         for curr_epoch in range(self.args.epochs):
             self.model.train()
             for image, label in train_loader:
-                with self.accelerator.autocast():
+                with autocast(device_type=self.args.device, enabled=self.args.fp16_precision):
                     pred = self.model(image).squeeze(-1)
                     loss = self.finetuning_criterion(pred, label)
 
                 self.optimizer.zero_grad()
-                self.accelerator.backward(loss)
-                self.optimizer.step()
+                scaler.scale(loss).backward()
+                scaler.step(self.optimizer)
+                scaler.update()
 
-                # if n_iter % self.args.log_every_n_steps == 0:
-                #     avg_loss = self.accelerator.gather(loss).mean()
-
-                #     self.writer.add_scalar('loss', avg_loss, global_step=n_iter)
-                #     self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
+                if n_iter % self.args.log_every_n_steps == 0:
+                    self.writer.add_scalar('loss_n_steps', loss, global_step=n_iter)
+                    self.writer.add_scalar('learning_rate', self.scheduler.get_last_lr()[0], global_step=n_iter)
                 
                 n_iter += 1
 
@@ -174,24 +188,20 @@ class SimCLR(object):
             curr_model_path = Path("models/finetuning/{date:%m-%d-%Y_%H:%M:%S}_checkpoints".format(date=self.args.date))
             curr_model_path.mkdir(parents=True, exist_ok=True)
             
-            # accelerate wraps in distributeddataparallel class so we have to access the module first
-            model_to_save = self.model.module if hasattr(self.model, "module") else self.model
-            
             checkpoint = {
                 'epoch': self.args.epochs,
-                'model': self.args.model,
-                'state_dict': model_to_save.state_dict(),
+                'model': self.args.arch,
+                'state_dict': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
             }
 
             # applicable to hf architectures
             # todo: create model class for simclr to req. self.backbone, self.head, and self.config so we don't need to have this safe guard
-            if hasattr(model_to_save, "config"):
-                checkpoint["config"] = model_to_save.backbone.config.to_dict()
+            if hasattr(self.model, "config"):
+                checkpoint["config"] = self.model.backbone.config.to_dict()
 
             if (curr_epoch + 1) % self.args.save_every_n == 0 or curr_epoch >= self.args.epochs - self.args.save_last_n:
                 save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
-            # save_checkpoint(checkpoint, is_best=False, filename=curr_model_path / checkpoint_name)
             logging.info(f"Model checkpoint {curr_epoch} and metadata has been saved at {curr_model_path}.")
 
             self.model.eval()
@@ -209,6 +219,7 @@ class SimCLR(object):
 
             val_loss /= total_val_samples
             logging.info(f"Validation loss for epoch {curr_epoch}: {val_loss}")
+            self.writer.add_scalar("validation_loss", val_loss, global_step=curr_epoch)
 
         test_loss = 0.0
         total_test_samples = 0
@@ -224,4 +235,5 @@ class SimCLR(object):
         test_loss /= total_test_samples
 
         logging.info(f"Final testing loss: {test_loss}")
+        self.writer.add_scalar("test_loss", )
         logging.info("Fine-tuning finished.")

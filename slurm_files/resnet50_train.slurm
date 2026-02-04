@@ -14,7 +14,7 @@
 source ~/.bashrc
 source .venv/bin/activate
 
-data_path=./datasets/EchoNet-Dynamic/
+data_path=./datasets/EchoNet-Dynamic/   
 model=resnet50
 batch_size=1024
 num_epochs=300

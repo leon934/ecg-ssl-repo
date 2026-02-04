@@ -2,11 +2,11 @@
 
 ##NECESSARY JOB SPECIFICATIONS
 #SBATCH --time=15:00:00
-#SBATCH --mem=80G
+#SBATCH --mem=128G
 #SBATCH --output=./jobs/%j_%x_output
 #SBATCH --nodes=1   
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:a100:2
 #SBATCH --partition=gpu
 
@@ -14,11 +14,13 @@
 source ~/.bashrc
 source .venv/bin/activate
 
-data_path=./datasets/EchoNet-Dynamic/
-batch_size=16
-num_epochs=200
 model=vivit
-clip_length=8
+data_path=./datasets/EchoNet-Dynamic/
+batch_size=48
+num_epochs=800
+num_workers=4
+optimizer=adam
+clip_length=16
 
 accelerate launch \
     --num_processes=2 \
@@ -26,11 +28,12 @@ accelerate launch \
     --num_machines=1 \
     --dynamo_backend=no \
     echo_simclr/run_pretrain.py \
-	-m ${model} \
+	--model ${model} \
 	--data ${data_path} \
-	-b ${batch_size} \
+	--batch-size ${batch_size} \
 	--epochs ${num_epochs} \
-	-j 2 \
-	--clip-length ${clip_length} \
-    --save-every-n 5 \
-    --save-last-n 10
+	--workers ${num_workers} \
+	--optimizer ${optimizer} \
+    --save-every-n 20 \
+    --save-last-n 10 \
+    --clip-length ${clip_length} 

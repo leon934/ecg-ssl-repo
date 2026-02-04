@@ -8,10 +8,10 @@ import torch
 import yaml
 
 def save_config_file(model_checkpoints_folder, args):
-    if not os.path.exists(model_checkpoints_folder):
-        os.makedirs(model_checkpoints_folder)
-        with open(os.path.join(model_checkpoints_folder, 'config.yml'), 'w') as outfile:
-            yaml.dump(args, outfile, default_flow_style=False)
+    os.makedirs(model_checkpoints_folder, exist_ok=True)
+
+    with open(os.path.join(model_checkpoints_folder, 'config.yml'), 'w') as outfile:
+        yaml.dump(vars(args), outfile, default_flow_style=False)
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
@@ -29,11 +29,11 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
-def setup_logging(log_dir: Path):
+def setup_logging(log_dir: Path, model_arch: str):
     log_dir.mkdir(parents=True, exist_ok=True)
 
     logging.basicConfig(
-        filename=log_dir / "training-{date:%m-%d-%Y_%H:%M:%S}.log".format(date=datetime.datetime.now()),
+        filename=log_dir / "training-{date:%m-%d-%Y_%H:%M:%S}-{arch}.log".format(date=datetime.datetime.now(), arch=model_arch),
         level=logging.DEBUG,
         filemode="w"
     )

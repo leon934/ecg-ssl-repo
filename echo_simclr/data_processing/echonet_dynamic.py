@@ -6,10 +6,10 @@ import pandas as pd
 from tqdm import tqdm
 
 def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
-    dataset_path = root_folder / f"echonet-np_arr-{args.model}.npz"
+    dataset_path = root_folder / f"echonet-np_arr-{args.arch}.npz"
 
     if dataset_path.exists():
-        print(f"Found saved EchoNet-Dynamic dataset for {args.model} model. Skipping creating views.")
+        print(f"Found saved EchoNet-Dynamic dataset for {args.arch} model. Skipping creating views.")
         save_arr = np.load(dataset_path, mmap_mode="r", allow_pickle=True)
 
         return save_arr
@@ -28,14 +28,14 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
 
         video_arr = np.expand_dims(np.stack([frame.to_ndarray(format="gray") for frame in obj.decode(video=0)]), axis=1)
         
-        if args.model == "vit" or args.model == "resnet50": 
+        if args.arch == "vit" or args.arch == "resnet50": 
             dataset_dict[curr_split].append(video_arr)
 
             ef_dict[curr_split].append(row.EF)
             es_dict[curr_split].append(row.ESV)
             edv_dict[curr_split].append(row.EDV)
         # only want videos >= clip_length, since we rely on sampling a video of length clip_length
-        elif args.model == "vivit" and len(video_arr) >= args.clip_length:
+        elif args.arch == "vivit" and len(video_arr) >= args.clip_length:
             dataset_dict[curr_split].append(video_arr)
 
             ef_dict[curr_split].append(row.EF)
@@ -51,6 +51,6 @@ def echonet_dataset(root_folder: Path, args: dict) -> np.ndarray:
         save_arr[f"EDV_{split}"] = np.array(edv_dict[split], dtype=np.float32)
 
     np.savez(dataset_path, **save_arr)
-    print(f"Finished saving EchoNet NumPy array for {args.model} model.")
+    print(f"Finished saving EchoNet NumPy array for {args.arch} model.")
 
     return save_arr

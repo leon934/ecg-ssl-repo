@@ -1,12 +1,15 @@
 import argparse
 import datetime
 import logging
+import math
 from pathlib import Path
 
 from accelerate import Accelerator, InitProcessGroupKwargs
+from timm.optim import Lars
 import torch
 
 from models.model import get_model
+from optimizer import get_optimizer
 from cl_dataset import ContrastiveLearningDataset
 from simclr import SimCLR
 from utils import setup_logging
@@ -20,6 +23,7 @@ parser.add_argument(
     '-m', '--model',
     metavar="MODEL",
     choices=["vit", "vivit", "resnet50"],
+    dest="arch",
     help='available models: vivit and vit',
     required=True
 )
@@ -89,6 +93,12 @@ parser.add_argument(
     dest='weight_decay',
     help='weight decay (default: 1e-4)'
 )
+parser.add_argument(
+    '-o', '--optimizer',
+    default='lars',
+    choices=['lars', 'adam'],
+    help='optimizer to use (rec. to use lars for >> batch sizes)'
+)
 
 # -------------------------------------------------
 # System / Hardware
@@ -131,16 +141,16 @@ def main():
     process_group_kwargs = InitProcessGroupKwargs(timeout=datetime.timedelta(hours=1))
     accelerator = Accelerator(kwargs_handlers=[process_group_kwargs])
 
-    if accelerator.is_main_process:
-        setup_logging(Path("./logs/pretraining"))
-
     args = parser.parse_args()
     args.date = datetime.datetime.now()
+
+    if accelerator.is_main_process:
+        setup_logging(Path("./logs/pretraining"), model_arch=args.arch)
 
     with accelerator.main_process_first():
         dataset = ContrastiveLearningDataset(
             root_folder=args.data,
-            model_type=args.model,
+            model_type=args.arch,
             dataset_name=args.dataset_name,
             addl_args=args
         )
@@ -152,20 +162,19 @@ def main():
     )
 
     model = get_model(
-        model_name=args.model,
+        model_name=args.arch,
         dataset_name=args.dataset_name,
         clip_length=args.clip_length,
         finetune_mode=False
     )
 
-    optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader) * args.epochs, eta_min=0, 
-                                                           last_epoch=-1)
+    optimizer, scheduler = get_optimizer(model, len(train_loader), args)
 
+    model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model, optimizer, train_loader, scheduler = accelerator.prepare(model, optimizer, train_loader, scheduler)
 
     if accelerator.is_main_process:
-        logging.info(f"Starting training with {args.model} model.")
+        logging.info(f"Starting training with {args.arch} model.")
     
     simclr_model = SimCLR(
         model=model, 

@@ -12,10 +12,15 @@ class ViViTModel(nn.Module):
         config = VivitConfig(
             image_size=image_size,
             num_channels=channels,
-            num_frames=clip_length
+            num_frames=clip_length,
+            add_pooling_layer=False
         )
 
         self.backbone = VivitModel(config)
+
+        if hasattr(self.backbone, 'pooler') and self.backbone.pooler is not None:
+            del self.backbone.pooler
+            self.backbone.pooler = None
 
         dim_mlp = self.backbone.config.hidden_size
         OUTPUT_DIM = 256

@@ -14,11 +14,12 @@
 source ~/.bashrc
 source .venv/bin/activate
 
-data_path=./datasets/EchoNet-Dynamic/
 model=vit
-batch_size=256
-num_epochs=300
+data_path=./datasets/EchoNet-Dynamic/
+batch_size=512
+num_epochs=800
 num_workers=2
+optimizer=lars
 
 accelerate launch \
     --num_processes=2 \
@@ -31,5 +32,6 @@ accelerate launch \
 	--batch-size ${batch_size} \
 	--epochs ${num_epochs} \
 	--workers ${num_workers} \
-    --save-every-n 5 \
-    --save-last-n 10
+    --optimizer ${optimizer} \
+    --save-every-n 40 \
+    --save-last-n 25
